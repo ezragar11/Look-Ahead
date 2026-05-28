@@ -1,0 +1,581 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPANY  (multi-tenant workspace)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  industry  String?  @default("CONSTRUCTION")
+  address   String?
+  phone     String?
+  website   String?
+  status    String   @default("ACTIVE") // ACTIVE | SUSPENDED | ARCHIVED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects       Project[]
+  companyUsers   CompanyUser[]
+  subcontractors Subcontractor[]
+  auditLogs      AuditLog[]
+}
+
+model CompanyUser {
+  id        String    @id @default(cuid())
+  companyId String
+  userId    String
+  role      String    @default("ENGINEER") // COMPANY_ADMIN | EXECUTIVE_VIEWER | OPERATIONS_MANAGER | PROJECT_MANAGER | SUPERINTENDENT | ENGINEER | FIELD_ASSISTANT | CLIENT_VIEWER | SUBCONTRACTOR
+  status    String    @default("ACTIVE")   // INVITED | ACTIVE | SUSPENDED | REMOVED
+  invitedBy String?
+  invitedAt DateTime?
+  joinedAt  DateTime  @default(now())
+  removedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USERS & AUTH
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  company      String?
+  phone        String?
+  globalRole   String    @default("ENGINEER") // PLATFORM_ADMIN | COMPANY_ADMIN | PROJECT_MANAGER | SUPERINTENDENT | ENGINEER | INTERN | SUBCONTRACTOR | OWNER_CLIENT
+  status       String    @default("ACTIVE")   // ACTIVE | SUSPENDED | INVITED
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  companyUsers       CompanyUser[]
+  projectUsers       ProjectUser[]
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+  exportLogs         ExportLog[]
+  requestedApprovals ApprovalRequest[] @relation("RequestedBy")
+  reviewedApprovals  ApprovalRequest[] @relation("ReviewedBy")
+}
+
+model ProjectUser {
+  id          String    @id @default(cuid())
+  projectId   String
+  userId      String
+  role        String    @default("ENGINEER") // PROJECT_ADMIN | PROJECT_MANAGER | SUPERINTENDENT | ENGINEER | FIELD_ASSISTANT | SUBCONTRACTOR | OWNER_VIEWER
+  status      String    @default("ACTIVE")   // INVITED | ACTIVE | SUSPENDED | REMOVED
+  invitedBy   String?
+  invitedAt   DateTime?
+  joinedAt    DateTime  @default(now())
+  removedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROJECT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Project {
+  id            String    @id @default(cuid())
+  companyId     String?
+  projectName   String
+  slug          String?
+  client        String?
+  contractor    String?
+  location      String?
+  projectNumber String?
+  description   String?
+  status        String    @default("ACTIVE") // ACTIVE | ON_HOLD | COMPLETED | ARCHIVED
+  startDate     DateTime?
+  endDate       DateTime?
+  createdBy     String?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company          Company?             @relation(fields: [companyId], references: [id])
+  lookaheads       Lookahead[]
+  activities       Activity[]
+  conflicts        Conflict[]
+  locations        ProjectLocation[]
+  notes            Note[]
+  attachments      Attachment[]
+  dailyReports     DailyReport[]
+  subProjects      SubcontractorProject[]
+  projectUsers     ProjectUser[]
+  auditLogs        AuditLog[]
+  constraints      Constraint[]
+  delays           Delay[]
+  notifications    Notification[]
+  documents        ProjectDocument[]
+  analyses         AIAnalysis[]
+  exportLogs       ExportLog[]
+  approvalRequests ApprovalRequest[]
+
+  @@unique([companyId, slug])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROJECT LOCATIONS  (zones, sectors, areas, rooms, floors)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ProjectLocation {
+  id          String    @id @default(cuid())
+  projectId   String
+  name        String                // e.g. "West Gate", "Control Room 2A"
+  zone        String?               // grouping: "Zone A", "Building 1"
+  floor       String?               // "Level 1", "Basement", "Roof"
+  description String?
+  color       String?               // hex color for future map viz
+  sortOrder   Int       @default(0)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activities Activity[]
+  conflicts  Conflict[]
+
+  @@unique([projectId, name])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOOKAHEAD
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Lookahead {
+  id             String    @id @default(cuid())
+  projectId      String
+  name           String
+  uploadDate     DateTime  @default(now())
+  sourceFileName String?
+  startDate      DateTime?
+  endDate        DateTime?
+  notes          String?
+  createdBy      String?
+  deletedAt      DateTime?
+  deletedBy      String?
+  createdAt      DateTime  @default(now())
+
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activities Activity[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUBCONTRACTOR  (company-scoped)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Subcontractor {
+  id          String   @id @default(cuid())
+  companyId   String?
+  name        String   @unique
+  trade       String?
+  contactName String?
+  phone       String?
+  email       String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company    Company?               @relation(fields: [companyId], references: [id])
+  activities Activity[]
+  projects   SubcontractorProject[]
+  delays     Delay[]
+}
+
+model SubcontractorProject {
+  id              String @id @default(cuid())
+  subcontractorId String
+  projectId       String
+
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([subcontractorId, projectId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVITY
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Activity {
+  id                          String    @id @default(cuid())
+  projectId                   String
+  lookaheadId                 String
+  category                    String?
+  activityDescription         String
+  responsibleSubcontractorId  String?
+  responsibleSubcontractorRaw String?
+  location                    String?
+  locationId                  String?
+  plannedStart                DateTime?
+  plannedFinish               DateTime?
+  actualStart                 DateTime?
+  actualFinish                DateTime?
+  status                      String    @default("PLANNED")
+  percentComplete             Int       @default(0)
+  delayReason                 String?
+  priority                    String    @default("MEDIUM")
+  needsFollowUp               Boolean   @default(false)
+  inspectionRequired          Boolean   @default(false)
+  outageRequired              Boolean   @default(false)
+  materialRequired            Boolean   @default(false)
+  safetyConcern               Boolean   @default(false)
+  notes                       String?
+  deletedAt                   DateTime?
+  deletedBy                   String?
+  deleteReason                String?
+  restoredAt                  DateTime?
+  restoredBy                  String?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lookahead       Lookahead        @relation(fields: [lookaheadId], references: [id], onDelete: Cascade)
+  subcontractor   Subcontractor?   @relation(fields: [responsibleSubcontractorId], references: [id])
+  projectLocation ProjectLocation? @relation(fields: [locationId], references: [id])
+  occurrences     ActivityOccurrence[]
+  conflictLinks   ConflictActivity[]
+  activityNotes Note[]
+  attachments   Attachment[]
+  constraints   Constraint[]
+  delays        Delay[]
+}
+
+model ActivityOccurrence {
+  id                  String   @id @default(cuid())
+  activityId          String
+  plannedDate         DateTime
+  plannedWeekLabel    String?
+  dayOfWeek           String?
+  isPlanned           Boolean  @default(true)
+  actualWorkCompleted String?
+  actualNotes         String?
+  status              String   @default("PLANNED")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFLICT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Conflict {
+  id              String    @id @default(cuid())
+  projectId       String
+  title           String
+  description     String?
+  conflictType    String    @default("TRADE_OVERLAP")
+  severity        String    @default("MEDIUM")
+  status          String    @default("OPEN")
+  owner           String?
+  location        String?
+  locationId      String?
+  dateIdentified  DateTime  @default(now())
+  neededBy        DateTime?
+  resolutionNotes String?
+  resolvedAt      DateTime?
+  isAutoDetected  Boolean   @default(false)
+  deletedAt       DateTime?
+  deletedBy       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project            Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectLocation    ProjectLocation?   @relation(fields: [locationId], references: [id])
+  conflictActivities ConflictActivity[]
+  notes              Note[]
+  attachments        Attachment[]
+}
+
+model ConflictActivity {
+  id         String @id @default(cuid())
+  conflictId String
+  activityId String
+
+  conflict Conflict @relation(fields: [conflictId], references: [id], onDelete: Cascade)
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@unique([conflictId, activityId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTRAINT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Constraint {
+  id               String    @id @default(cuid())
+  projectId        String
+  activityId       String?
+  title            String
+  type             String    @default("MATERIAL")
+  status           String    @default("OPEN")
+  priority         String    @default("MEDIUM")
+  responsibleParty String?
+  neededBy         DateTime?
+  resolvedAt       DateTime?
+  notes            String?
+  createdBy        String?
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activity Activity? @relation(fields: [activityId], references: [id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELAY
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Delay {
+  id               String    @id @default(cuid())
+  projectId        String
+  activityId       String?
+  subcontractorId  String?
+  title            String
+  delayType        String    @default("MATERIAL")
+  startDate        DateTime?
+  endDate          DateTime?
+  daysDelayed      Int?
+  cause            String?
+  responsibleParty String?
+  impact           String?
+  status           String    @default("OPEN")
+  notes            String?
+  createdBy        String?
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activity      Activity?      @relation(fields: [activityId], references: [id])
+  subcontractor Subcontractor? @relation(fields: [subcontractorId], references: [id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTE / ATTACHMENT / DAILY REPORT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Note {
+  id         String    @id @default(cuid())
+  projectId  String?
+  activityId String?
+  conflictId String?
+  noteText   String
+  author     String?
+  isPublic   Boolean   @default(false)
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  project  Project?  @relation(fields: [projectId], references: [id])
+  activity Activity? @relation(fields: [activityId], references: [id])
+  conflict Conflict? @relation(fields: [conflictId], references: [id])
+}
+
+model Attachment {
+  id               String    @id @default(cuid())
+  projectId        String?
+  activityId       String?
+  conflictId       String?
+  originalFileName String?
+  storedFileName   String?
+  fileName         String
+  fileType         String?
+  mimeType         String?
+  fileSize         Int?
+  fileUrl          String
+  storagePath      String?
+  uploadedBy       String?
+  isPublic         Boolean   @default(false)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  project  Project?  @relation(fields: [projectId], references: [id])
+  activity Activity? @relation(fields: [activityId], references: [id])
+  conflict Conflict? @relation(fields: [conflictId], references: [id])
+}
+
+model DailyReport {
+  id            String   @id @default(cuid())
+  projectId     String
+  reportDate    DateTime
+  summary       String?
+  weather       String?
+  manpowerNotes String?
+  safetyNotes   String?
+  delays        String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT LOG  (generic — now with companyId for multi-tenant scoping)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  companyId    String?
+  projectId    String?
+  userId       String?
+  entityType   String
+  entityId     String
+  action       String
+  fieldChanged String?
+  oldValue     String?
+  newValue     String?
+  changeReason String?
+  changedBy    String?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  company Company? @relation(fields: [companyId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
+  user    User?    @relation(fields: [userId], references: [id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String    @id @default(cuid())
+  projectId String?
+  userId    String
+  title     String
+  message   String?
+  type      String    @default("INFO")
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id])
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORT LOG
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ExportLog {
+  id          String   @id @default(cuid())
+  projectId   String?
+  userId      String
+  exportType  String
+  filtersUsed String?
+  fileName    String?
+  createdAt   DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id])
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APPROVAL REQUESTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ApprovalRequest {
+  id              String    @id @default(cuid())
+  projectId       String
+  requestedById   String
+  reviewedById    String?
+  entityType      String
+  entityId        String
+  actionRequested String
+  reason          String?
+  status          String    @default("PENDING")
+  requestedAt     DateTime  @default(now())
+  reviewedAt      DateTime?
+  rejectionReason String?
+
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requestedBy User    @relation("RequestedBy", fields: [requestedById], references: [id])
+  reviewedBy  User?   @relation("ReviewedBy", fields: [reviewedById], references: [id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROJECT DOCUMENTS  (SOW, blueprints, specs, submittals, contracts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ProjectDocument {
+  id            String    @id @default(cuid())
+  projectId     String
+  name          String
+  type          String    @default("OTHER")
+  originalName  String
+  storedName    String?
+  filePath      String?
+  mimeType      String?
+  fileSize      Int?
+  pageCount     Int?
+  extractedText String?
+  hasImages     Boolean   @default(false)
+  uploadedBy    String?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  analyses  AIAnalysisDocument[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI ANALYSIS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AIAnalysis {
+  id           String    @id @default(cuid())
+  projectId    String
+  title        String    @default("Schedule Analysis")
+  analysisType String    @default("SCHEDULE_REVIEW")
+  status       String    @default("PENDING")
+  resultJson   String?
+  errorMessage String?
+  model        String?
+  inputTokens  Int?
+  outputTokens Int?
+  createdBy    String?
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  project   Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  documents AIAnalysisDocument[]
+}
+
+model AIAnalysisDocument {
+  id          String @id @default(cuid())
+  analysisId  String
+  documentId  String
+
+  analysis AIAnalysis      @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  document ProjectDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([analysisId, documentId])
+}

@@ -1,0 +1,137 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+
+// ── GET — list locations for a project ──────────────────────────────────────
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const deleted = req.nextUrl.searchParams.get("deleted");
+    const deletedFilter = deleted === "only" ? { not: null } : null;
+
+    const locations = await prisma.projectLocation.findMany({
+      where: { projectId: params.id, deletedAt: deletedFilter },
+      include: {
+        _count: { select: { activities: true, conflicts: true } },
+      },
+      orderBy: [{ zone: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+    });
+
+    return NextResponse.json(locations);
+  } catch (err) {
+    console.error("GET /api/projects/[id]/locations error:", err);
+    return NextResponse.json({ error: "Failed to fetch locations" }, { status: 500 });
+  }
+}
+
+// ── POST — create a location ────────────────────────────────────────────────
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const body = await req.json();
+    const { name, zone, floor, description, color } = body;
+
+    if (!name?.trim()) {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+    }
+
+    // Check for duplicate name within project
+    const existing = await prisma.projectLocation.findUnique({
+      where: { projectId_name: { projectId: params.id, name: name.trim() } },
+    });
+    if (existing && !existing.deletedAt) {
+      return NextResponse.json({ error: "A location with this name already exists" }, { status: 409 });
+    }
+
+    // If there was a soft-deleted location with same name, restore it with new data
+    if (existing && existing.deletedAt) {
+      const restored = await prisma.projectLocation.update({
+        where: { id: existing.id },
+        data: {
+          zone: zone?.trim() || null,
+          floor: floor?.trim() || null,
+          description: description?.trim() || null,
+          color: color || null,
+          deletedAt: null,
+        },
+      });
+      return NextResponse.json(restored, { status: 201 });
+    }
+
+    const location = await prisma.projectLocation.create({
+      data: {
+        projectId: params.id,
+        name: name.trim(),
+        zone: zone?.trim() || null,
+        floor: floor?.trim() || null,
+        description: description?.trim() || null,
+        color: color || null,
+      },
+    });
+
+    return NextResponse.json(location, { status: 201 });
+  } catch (err) {
+    console.error("POST /api/projects/[id]/locations error:", err);
+    return NextResponse.json({ error: "Failed to create location" }, { status: 500 });
+  }
+}
+
+// ── PATCH — update a location ───────────────────────────────────────────────
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { id, ...updates } = await req.json();
+    if (!id) return NextResponse.json({ error: "Location ID required" }, { status: 400 });
+
+    const location = await prisma.projectLocation.update({
+      where: { id, projectId: params.id },
+      data: updates,
+    });
+
+    return NextResponse.json(location);
+  } catch (err) {
+    console.error("PATCH /api/projects/[id]/locations error:", err);
+    return NextResponse.json({ error: "Failed to update location" }, { status: 500 });
+  }
+}
+
+// ── DELETE — soft-delete a location ─────────────────────────────────────────
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { id } = await req.json();
+    if (!id) return NextResponse.json({ error: "Location ID required" }, { status: 400 });
+
+    await prisma.projectLocation.update({
+      where: { id, projectId: params.id },
+      data: { deletedAt: new Date() },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("DELETE /api/projects/[id]/locations error:", err);
+    return NextResponse.json({ error: "Failed to delete location" }, { status: 500 });
+  }
+}
