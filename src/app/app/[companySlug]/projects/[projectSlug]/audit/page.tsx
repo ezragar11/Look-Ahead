@@ -57,12 +57,12 @@ export default function ProjectAuditPage() {
         return; // will re-trigger via useEffect
       }
 
-      const params = new URLSearchParams({ projectId, limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) });
+      const params = new URLSearchParams({ projectId, page: String(page + 1), pageSize: String(PAGE_SIZE) });
       if (filterEntity) params.set("entityType", filterEntity);
       if (filterAction) params.set("action", filterAction);
       if (filterUser) params.set("userId", filterUser);
 
-      const res = await fetch(`/api/audit?${params}`);
+      const res = await fetch(`/api/audit-logs?${params}`);
       if (!res.ok) { setError("Failed to load audit log"); setLoading(false); return; }
       const data = await res.json();
 

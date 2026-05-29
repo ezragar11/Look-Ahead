@@ -36,7 +36,7 @@ model CompanyUser {
   companyId String
   userId    String
   role      String    @default("ENGINEER") // COMPANY_ADMIN | EXECUTIVE_VIEWER | OPERATIONS_MANAGER | PROJECT_MANAGER | SUPERINTENDENT | ENGINEER | FIELD_ASSISTANT | CLIENT_VIEWER | SUBCONTRACTOR
-  status    String    @default("ACTIVE")   // INVITED | ACTIVE | SUSPENDED | REMOVED
+  status    String    @default("ACTIVE") // INVITED | ACTIVE | SUSPENDED | REMOVED
   invitedBy String?
   invitedAt DateTime?
   joinedAt  DateTime  @default(now())
@@ -62,7 +62,7 @@ model User {
   company      String?
   phone        String?
   globalRole   String    @default("ENGINEER") // PLATFORM_ADMIN | COMPANY_ADMIN | PROJECT_MANAGER | SUPERINTENDENT | ENGINEER | INTERN | SUBCONTRACTOR | OWNER_CLIENT
-  status       String    @default("ACTIVE")   // ACTIVE | SUSPENDED | INVITED
+  status       String    @default("ACTIVE") // ACTIVE | SUSPENDED | INVITED
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -80,17 +80,17 @@ model User {
 }
 
 model ProjectUser {
-  id          String    @id @default(cuid())
-  projectId   String
-  userId      String
-  role        String    @default("ENGINEER") // PROJECT_ADMIN | PROJECT_MANAGER | SUPERINTENDENT | ENGINEER | FIELD_ASSISTANT | SUBCONTRACTOR | OWNER_VIEWER
-  status      String    @default("ACTIVE")   // INVITED | ACTIVE | SUSPENDED | REMOVED
-  invitedBy   String?
-  invitedAt   DateTime?
-  joinedAt    DateTime  @default(now())
-  removedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String    @id @default(cuid())
+  projectId String
+  userId    String
+  role      String    @default("ENGINEER") // PROJECT_ADMIN | PROJECT_MANAGER | SUPERINTENDENT | ENGINEER | FIELD_ASSISTANT | SUBCONTRACTOR | OWNER_VIEWER
+  status    String    @default("ACTIVE") // INVITED | ACTIVE | SUSPENDED | REMOVED
+  invitedBy String?
+  invitedAt DateTime?
+  joinedAt  DateTime  @default(now())
+  removedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -103,25 +103,25 @@ model ProjectUser {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Project {
-  id              String    @id @default(cuid())
-  companyId       String?
-  projectName     String
-  slug            String?
-  client          String?
-  contractor      String?
-  location        String?
-  projectNumber   String?
-  description     String?
-  status          String    @default("ACTIVE") // ACTIVE | ON_HOLD | COMPLETED | ARCHIVED
-  startDate       DateTime?
-  endDate         DateTime?
-  createdBy       String?
-  mapSitePlanId   String?   // which ProjectDocument (site plan) is the map background
-  deletedAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  companyId     String?
+  projectName   String
+  slug          String?
+  client        String?
+  contractor    String?
+  location      String?
+  projectNumber String?
+  description   String?
+  status        String    @default("ACTIVE") // ACTIVE | ON_HOLD | COMPLETED | ARCHIVED
+  startDate     DateTime?
+  endDate       DateTime?
+  createdBy     String?
+  mapSitePlanId String? // which ProjectDocument (site plan) is the map background
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  company          Company?             @relation(fields: [companyId], references: [id])
+  company          Company?               @relation(fields: [companyId], references: [id])
   lookaheads       Lookahead[]
   activities       Activity[]
   conflicts        Conflict[]
@@ -151,14 +151,14 @@ model Project {
 model ProjectLocation {
   id          String    @id @default(cuid())
   projectId   String
-  name        String                // e.g. "West Gate", "Control Room 2A"
-  zone        String?               // grouping: "Zone A", "Building 1"
-  floor       String?               // "Level 1", "Basement", "Roof"
+  name        String // e.g. "West Gate", "Control Room 2A"
+  zone        String? // grouping: "Zone A", "Building 1"
+  floor       String? // "Level 1", "Basement", "Roof"
   description String?
-  color       String?               // hex color for future map viz
+  color       String? // hex color for future map viz
   sortOrder   Int       @default(0)
-  mapX        Float?                // pin X coordinate on map (0-100%)
-  mapY        Float?                // pin Y coordinate on map (0-100%)
+  mapX        Float? // pin X coordinate on map (0-100%)
+  mapY        Float? // pin Y coordinate on map (0-100%)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -169,6 +169,7 @@ model ProjectLocation {
   alerts     Alert[]
 
   @@unique([projectId, name])
+  @@index([projectId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,6 +192,9 @@ model Lookahead {
 
   project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   activities Activity[]
+
+  @@index([projectId])
+  @@index([projectId, uploadDate])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,17 +267,24 @@ model Activity {
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @updatedAt
 
-  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  lookahead       Lookahead        @relation(fields: [lookaheadId], references: [id], onDelete: Cascade)
-  subcontractor   Subcontractor?   @relation(fields: [responsibleSubcontractorId], references: [id])
-  projectLocation ProjectLocation? @relation(fields: [locationId], references: [id])
+  project         Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lookahead       Lookahead            @relation(fields: [lookaheadId], references: [id], onDelete: Cascade)
+  subcontractor   Subcontractor?       @relation(fields: [responsibleSubcontractorId], references: [id])
+  projectLocation ProjectLocation?     @relation(fields: [locationId], references: [id])
   occurrences     ActivityOccurrence[]
   conflictLinks   ConflictActivity[]
-  activityNotes Note[]
-  attachments   Attachment[]
-  constraints   Constraint[]
-  delays        Delay[]
-  alerts        Alert[]
+  activityNotes   Note[]
+  attachments     Attachment[]
+  constraints     Constraint[]
+  delays          Delay[]
+  alerts          Alert[]
+
+  @@index([projectId])
+  @@index([projectId, status])
+  @@index([projectId, deletedAt])
+  @@index([lookaheadId])
+  @@index([responsibleSubcontractorId])
+  @@index([locationId])
 }
 
 model ActivityOccurrence {
@@ -290,6 +301,9 @@ model ActivityOccurrence {
   updatedAt           DateTime @updatedAt
 
   activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([activityId])
+  @@index([plannedDate])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -322,6 +336,10 @@ model Conflict {
   conflictActivities ConflictActivity[]
   notes              Note[]
   attachments        Attachment[]
+
+  @@index([projectId])
+  @@index([projectId, status])
+  @@index([projectId, deletedAt])
 }
 
 model ConflictActivity {
@@ -358,6 +376,10 @@ model Constraint {
 
   project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   activity Activity? @relation(fields: [activityId], references: [id])
+
+  @@index([projectId])
+  @@index([projectId, status])
+  @@index([projectId, deletedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -387,6 +409,10 @@ model Delay {
   project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   activity      Activity?      @relation(fields: [activityId], references: [id])
   subcontractor Subcontractor? @relation(fields: [subcontractorId], references: [id])
+
+  @@index([projectId])
+  @@index([projectId, status])
+  @@index([projectId, deletedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -398,14 +424,14 @@ model Alert {
   projectId       String
   title           String
   description     String?
-  alertType       String    @default("GENERAL")  // SAFETY, ACCESS, MATERIAL, INSPECTION, SCHEDULE, CREW_CONFLICT, WEATHER, EQUIPMENT, GENERAL
-  priority        String    @default("MEDIUM")    // LOW | MEDIUM | HIGH | URGENT
-  status          String    @default("OPEN")      // OPEN | ASSIGNED | IN_PROGRESS | RESOLVED | CLOSED
-  locationId      String?                          // linked ProjectLocation
-  locationText    String?                          // free-text fallback
+  alertType       String    @default("GENERAL") // SAFETY, ACCESS, MATERIAL, INSPECTION, SCHEDULE, CREW_CONFLICT, WEATHER, EQUIPMENT, GENERAL
+  priority        String    @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  status          String    @default("OPEN") // OPEN | ASSIGNED | IN_PROGRESS | RESOLVED | CLOSED
+  locationId      String? // linked ProjectLocation
+  locationText    String? // free-text fallback
   activityId      String?
   subcontractorId String?
-  assignedToId    String?                          // user assigned to handle
+  assignedToId    String? // user assigned to handle
   createdById     String
   resolvedById    String?
   resolvedAt      DateTime?
@@ -422,6 +448,11 @@ model Alert {
   assignedTo      User?            @relation("AlertAssignee", fields: [assignedToId], references: [id])
   createdBy       User             @relation("AlertCreator", fields: [createdById], references: [id])
   resolvedBy      User?            @relation("AlertResolver", fields: [resolvedById], references: [id])
+
+  @@index([projectId])
+  @@index([projectId, status])
+  @@index([projectId, deletedAt])
+  @@index([assignedToId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -506,6 +537,11 @@ model AuditLog {
   company Company? @relation(fields: [companyId], references: [id])
   project Project? @relation(fields: [projectId], references: [id])
   user    User?    @relation(fields: [userId], references: [id])
+
+  @@index([projectId])
+  @@index([projectId, createdAt])
+  @@index([entityType, entityId])
+  @@index([userId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -524,6 +560,9 @@ model Notification {
 
   project Project? @relation(fields: [projectId], references: [id])
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -588,8 +627,8 @@ model ProjectDocument {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  analyses  AIAnalysisDocument[]
+  project  Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  analyses AIAnalysisDocument[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -611,14 +650,16 @@ model AIAnalysis {
   createdAt    DateTime  @default(now())
   completedAt  DateTime?
 
-  project   Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   documents AIAnalysisDocument[]
+
+  @@index([projectId])
 }
 
 model AIAnalysisDocument {
-  id          String @id @default(cuid())
-  analysisId  String
-  documentId  String
+  id         String @id @default(cuid())
+  analysisId String
+  documentId String
 
   analysis AIAnalysis      @relation(fields: [analysisId], references: [id], onDelete: Cascade)
   document ProjectDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
