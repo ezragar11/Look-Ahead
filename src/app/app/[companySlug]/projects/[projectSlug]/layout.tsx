@@ -11,7 +11,7 @@ import {
   Users, AlertTriangle, ShieldAlert, Clock, BarChart3, HardHat,
   ScrollText, LogOut, ChevronDown, ChevronLeft, FolderOpen,
   FileText, Brain, Settings, Layers, Bell, StickyNote,
-  Megaphone, Coffee, Map, MapPin,
+  Megaphone, Coffee, Map, MapPin, Compass,
 } from "lucide-react";
 
 interface ProjectInfo {
@@ -100,6 +100,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
       title: "SITE",
       accent: "text-cyan-400",
       items: [
+        { href: `${base}/map`,          label: "Project Map",      icon: Compass,         color: "text-emerald-400" },
         { href: `${base}/site-plans`,   label: "Site Plans",       icon: Map,             color: "text-cyan-400" },
         { href: `${base}/locations`,    label: "Locations",        icon: MapPin,          color: "text-cyan-300" },
       ],

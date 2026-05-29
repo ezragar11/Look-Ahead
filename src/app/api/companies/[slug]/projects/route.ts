@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { getAccessibleProjectIds } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
-/** GET — list projects for a company */
+/** GET — list projects for a company (access-scoped) */
 export async function GET(
   _req: NextRequest,
   { params }: { params: { slug: string } }
@@ -16,8 +17,16 @@ export async function GET(
     const company = await prisma.company.findUnique({ where: { slug: params.slug } });
     if (!company) return NextResponse.json({ error: "Company not found" }, { status: 404 });
 
+    const userId = (session.user as { id: string }).id;
+    const accessible = await getAccessibleProjectIds(userId, company.id);
+
+    const where: Record<string, unknown> = { companyId: company.id, deletedAt: null };
+    if (accessible !== "all") {
+      where.id = { in: accessible };
+    }
+
     const projects = await prisma.project.findMany({
-      where:   { companyId: company.id, deletedAt: null },
+      where,
       select:  { id: true, projectName: true, slug: true, status: true, location: true, companyId: true },
       orderBy: { createdAt: "desc" },
     });

@@ -99,22 +99,23 @@ model ProjectUser {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Project {
-  id            String    @id @default(cuid())
-  companyId     String?
-  projectName   String
-  slug          String?
-  client        String?
-  contractor    String?
-  location      String?
-  projectNumber String?
-  description   String?
-  status        String    @default("ACTIVE") // ACTIVE | ON_HOLD | COMPLETED | ARCHIVED
-  startDate     DateTime?
-  endDate       DateTime?
-  createdBy     String?
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  companyId       String?
+  projectName     String
+  slug            String?
+  client          String?
+  contractor      String?
+  location        String?
+  projectNumber   String?
+  description     String?
+  status          String    @default("ACTIVE") // ACTIVE | ON_HOLD | COMPLETED | ARCHIVED
+  startDate       DateTime?
+  endDate         DateTime?
+  createdBy       String?
+  mapSitePlanId   String?   // which ProjectDocument (site plan) is the map background
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   company          Company?             @relation(fields: [companyId], references: [id])
   lookaheads       Lookahead[]
@@ -151,6 +152,8 @@ model ProjectLocation {
   description String?
   color       String?               // hex color for future map viz
   sortOrder   Int       @default(0)
+  mapX        Float?                // pin X coordinate on map (0-100%)
+  mapY        Float?                // pin Y coordinate on map (0-100%)
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

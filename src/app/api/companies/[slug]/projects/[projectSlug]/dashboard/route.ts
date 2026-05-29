@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { canAccessCompany } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +13,13 @@ export async function GET(
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const userId = (session.user as { id: string }).id;
     const company = await prisma.company.findUnique({ where: { slug: params.slug } });
     if (!company) return NextResponse.json({ error: "Company not found" }, { status: 404 });
+
+    // Access check
+    const hasAccess = await canAccessCompany(userId, company.id);
+    if (!hasAccess) return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
     let project = await prisma.project.findFirst({
       where: { companyId: company.id, slug: params.projectSlug, deletedAt: null },
@@ -108,9 +114,15 @@ export async function GET(
       return new Date(a.plannedFinish) < today;
     });
 
-    // Conflicts & constraints
+    // Conflicts & constraints — count anything NOT resolved/closed as "open"
     const [openConflicts, openConstraints] = await Promise.all([
-      prisma.conflict.count({ where: { projectId: project.id, status: "OPEN", deletedAt: null } }),
+      prisma.conflict.count({
+        where: {
+          projectId: project.id,
+          deletedAt: null,
+          status: { notIn: ["RESOLVED", "CLOSED"] },
+        },
+      }),
       prisma.constraint.count({ where: { projectId: project.id, status: { in: ["OPEN", "IN_PROGRESS"] }, deletedAt: null } }),
     ]);
 

@@ -50,13 +50,14 @@ export async function PATCH(
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const { projectName, description } = body;
+    const { projectName, description, mapSitePlanId } = body;
 
     const project = await prisma.project.update({
       where: { id: params.id },
       data: {
         ...(projectName  ? { projectName }  : {}),
         ...(description !== undefined ? { description } : {}),
+        ...(mapSitePlanId !== undefined ? { mapSitePlanId } : {}),
       },
     });
 
