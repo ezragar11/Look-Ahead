@@ -11,7 +11,7 @@ import {
   Users, AlertTriangle, ShieldAlert, Clock, BarChart3, HardHat,
   ScrollText, LogOut, ChevronDown, ChevronLeft, FolderOpen,
   FileText, Brain, Settings, Layers, Bell, StickyNote,
-  Megaphone, Coffee, Map, MapPin, Compass,
+  Megaphone, Coffee, Map, MapPin, Compass, Menu, X,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { DemoGuide } from "@/components/DemoGuide";
@@ -46,6 +46,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   const [project, setProject]         = useState<ProjectInfo | null>(null);
   const [allProjects, setAllProjects] = useState<ProjectInfo[]>([]);
   const [showSwitcher, setShowSwitcher] = useState(false);
+  const [mobileOpen, setMobileOpen]   = useState(false);
 
   const base = `/app/${params.companySlug}/projects/${params.projectSlug}`;
 
@@ -132,7 +133,26 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
 
   return (
     <div className="flex min-h-screen bg-slate-950">
-      <aside className="fixed left-0 top-0 h-screen w-64 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 flex flex-col z-30 border-r border-slate-800">
+      {/* Mobile hamburger */}
+      <button
+        onClick={() => setMobileOpen(!mobileOpen)}
+        className="fixed top-3 left-3 z-50 md:hidden p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-400 hover:text-white"
+      >
+        {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+      </button>
+
+      {/* Backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-20 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <aside className={cn(
+        "fixed left-0 top-0 h-screen w-64 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 flex flex-col z-30 border-r border-slate-800 transition-transform duration-200",
+        mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
         {/* Back to company */}
         <Link
           href={`/app/${params.companySlug}`}
@@ -197,6 +217,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
                   <Link
                     key={href}
                     href={href}
+                    onClick={() => setMobileOpen(false)}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all",
                       active
@@ -239,8 +260,8 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         </div>
       </aside>
 
-      <main className="ml-64 flex-1 min-h-screen bg-slate-950">
-        <div className="max-w-[1600px] mx-auto px-8 py-8">
+      <main className="md:ml-64 flex-1 min-h-screen bg-slate-950">
+        <div className="max-w-[1600px] mx-auto px-4 pt-14 pb-8 md:px-8 md:py-8">
           <ErrorBoundary>{children}</ErrorBoundary>
         </div>
         <DemoGuide />

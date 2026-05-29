@@ -233,13 +233,25 @@ export default function ConflictsPage() {
     finally { setUpdatingStatus(prev => ({ ...prev, [id]: false })); }
   }
 
-  async function deleteConflict(id: string) {
-    if (!confirm("Delete this conflict?")) return;
-    try {
-      const res = await fetch(`/api/conflicts/${id}`, { method: "DELETE" });
-      if (res.ok) { toast.success("Conflict deleted"); load(); }
-      else toast.error("Failed to delete");
-    } catch { toast.error("Failed to delete"); }
+  function deleteConflict(id: string) {
+    const prev = conflicts;
+    setConflicts(cs => cs.filter(c => c.id !== id));
+    let cancelled = false;
+    const tid = setTimeout(async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`/api/conflicts/${id}`, { method: "DELETE" });
+        if (!res.ok) { setConflicts(prev); toast.error("Delete failed — reverted"); }
+      } catch { setConflicts(prev); toast.error("Delete failed — reverted"); }
+    }, 4000);
+    toast((t) => (
+      <span className="flex items-center gap-3">
+        Conflict deleted
+        <button className="font-bold text-sky-500 hover:text-sky-400" onClick={() => { cancelled = true; clearTimeout(tid); setConflicts(prev); toast.dismiss(t.id); }}>
+          Undo
+        </button>
+      </span>
+    ), { duration: 4000 });
   }
 
   async function loadDeleted() {

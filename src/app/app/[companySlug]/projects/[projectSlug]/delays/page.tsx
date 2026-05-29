@@ -114,26 +114,38 @@ export default function DelaysPage() {
   }
 
   async function updateStatus(id: string, status: string) {
+    const prev = delays;
+    setDelays(ds => ds.map(d => d.id === id ? { ...d, status } : d));
+    toast.success(status === "RESOLVED" ? "Delay resolved" : "Status updated");
     const res = await fetch("/api/delays", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
-    if (res.ok) {
-      toast.success(status === "RESOLVED" ? "Delay resolved" : "Status updated");
-      load();
-    }
+    if (!res.ok) { setDelays(prev); toast.error("Failed to update — reverted"); }
   }
 
-  async function deleteDelay(id: string) {
-    if (!confirm("Delete this delay?")) return;
-    const res = await fetch("/api/delays", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    if (res.ok) { toast.success("Delay deleted"); load(); }
-    else toast.error("Failed to delete");
+  function deleteDelay(id: string) {
+    const prev = delays;
+    setDelays(ds => ds.filter(d => d.id !== id));
+    let cancelled = false;
+    const tid = setTimeout(async () => {
+      if (cancelled) return;
+      const res = await fetch("/api/delays", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) { setDelays(prev); toast.error("Delete failed — reverted"); }
+    }, 4000);
+    toast((t) => (
+      <span className="flex items-center gap-3">
+        Delay deleted
+        <button className="font-bold text-sky-500 hover:text-sky-400" onClick={() => { cancelled = true; clearTimeout(tid); setDelays(prev); toast.dismiss(t.id); }}>
+          Undo
+        </button>
+      </span>
+    ), { duration: 4000 });
   }
 
   async function loadDeleted() {

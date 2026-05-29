@@ -108,26 +108,38 @@ export default function ConstraintsPage() {
   }
 
   async function updateStatus(id: string, status: string) {
+    const prev = constraints;
+    setConstraints(cs => cs.map(c => c.id === id ? { ...c, status, resolvedAt: status === "RESOLVED" ? new Date().toISOString() : c.resolvedAt } : c));
+    toast.success(status === "RESOLVED" ? "Constraint resolved" : "Status updated");
     const res = await fetch("/api/constraints", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
-    if (res.ok) {
-      toast.success(status === "RESOLVED" ? "Constraint resolved" : "Status updated");
-      load();
-    }
+    if (!res.ok) { setConstraints(prev); toast.error("Failed to update — reverted"); }
   }
 
-  async function deleteConstraint(id: string) {
-    if (!confirm("Delete this constraint?")) return;
-    const res = await fetch("/api/constraints", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    if (res.ok) { toast.success("Constraint deleted"); load(); }
-    else toast.error("Failed to delete");
+  function deleteConstraint(id: string) {
+    const prev = constraints;
+    setConstraints(cs => cs.filter(c => c.id !== id));
+    let cancelled = false;
+    const tid = setTimeout(async () => {
+      if (cancelled) return;
+      const res = await fetch("/api/constraints", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) { setConstraints(prev); toast.error("Delete failed — reverted"); }
+    }, 4000);
+    toast((t) => (
+      <span className="flex items-center gap-3">
+        Constraint deleted
+        <button className="font-bold text-sky-500 hover:text-sky-400" onClick={() => { cancelled = true; clearTimeout(tid); setConstraints(prev); toast.dismiss(t.id); }}>
+          Undo
+        </button>
+      </span>
+    ), { duration: 4000 });
   }
 
   async function loadDeleted() {
