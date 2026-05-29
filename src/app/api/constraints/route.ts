@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getSession, writeAuditLog } from "@/lib/auth";
 import { getProjectRole, canManageWork } from "@/lib/access";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
