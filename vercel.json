@@ -5,6 +5,7 @@
   "env": {
     "NEXTAUTH_URL": "@nextauth-url",
     "NEXTAUTH_SECRET": "@nextauth-secret",
-    "DATABASE_URL": "@database-url"
+    "DATABASE_URL": "@database-url",
+    "DIRECT_URL": "@direct-url"
   }
 }
