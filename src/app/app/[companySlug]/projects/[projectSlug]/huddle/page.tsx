@@ -7,6 +7,7 @@ import {
   Coffee, Loader2, HardHat, MapPin, AlertTriangle, ShieldAlert,
   Clock, CheckCircle2, Zap, ClipboardCheck,
   ChevronRight, Calendar, ArrowRight, Eye, EyeOff, Check, Pause, Ban,
+  Megaphone, Flame,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -45,6 +46,16 @@ interface Constraint {
   responsibleParty: string | null;
 }
 
+interface HuddleAlert {
+  id: string;
+  title: string;
+  priority: string;
+  status: string;
+  alertType: string;
+  projectLocation: { id: string; name: string } | null;
+  assignedTo: { id: string; name: string } | null;
+}
+
 interface CrewGroup {
   sub: string;
   activities: Activity[];
@@ -73,6 +84,7 @@ export default function MorningHuddlePage() {
   const [activities, setActivities]   = useState<Activity[]>([]);
   const [conflicts, setConflicts]     = useState<Conflict[]>([]);
   const [constraints, setConstraints] = useState<Constraint[]>([]);
+  const [alerts, setAlerts]           = useState<HuddleAlert[]>([]);
   const [projectName, setProjectName] = useState("");
   const [projectId, setProjectId]     = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
@@ -90,15 +102,17 @@ export default function MorningHuddlePage() {
       setProjectName(proj.projectName ?? projectSlug);
       setProjectId(proj.id);
 
-      const [aRes, cRes, cnRes] = await Promise.all([
+      const [aRes, cRes, cnRes, alRes] = await Promise.all([
         fetch(`/api/activities?projectId=${proj.id}`),
         fetch(`/api/conflicts?projectId=${proj.id}`),
         fetch(`/api/constraints?projectId=${proj.id}`),
+        fetch(`/api/projects/${proj.id}/alerts`),
       ]);
 
       if (aRes.ok) setActivities(await aRes.json());
       if (cRes.ok) setConflicts(await cRes.json());
       if (cnRes.ok) setConstraints(await cnRes.json());
+      if (alRes.ok) setAlerts(await alRes.json());
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, [companySlug, projectSlug]);
@@ -163,6 +177,8 @@ export default function MorningHuddlePage() {
     return subs.size >= 2;
   });
 
+  const unresolvedAlerts = alerts.filter(a => a.status !== "RESOLVED" && a.status !== "CLOSED");
+  const urgentAlerts = unresolvedAlerts.filter(a => a.priority === "URGENT" || a.priority === "HIGH");
   const openConflicts = conflicts.filter(c => c.status === "OPEN" || c.status === "UNDER_REVIEW");
   const activeConstraints = constraints.filter(c => c.status === "OPEN" || c.status === "IN_PROGRESS");
   const overdue = activities.filter(a => {
@@ -229,6 +245,13 @@ export default function MorningHuddlePage() {
               <AlertTriangle className="w-4 h-4 text-red-400" />
               <span className="text-red-300 text-sm font-bold">{areaOverlaps.length}</span>
               <span className="text-slate-400 text-sm">area overlaps</span>
+            </div>
+          )}
+          {urgentAlerts.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Megaphone className="w-4 h-4 text-red-400" />
+              <span className="text-red-300 text-sm font-bold">{urgentAlerts.length}</span>
+              <span className="text-slate-400 text-sm">urgent/high alerts</span>
             </div>
           )}
           {openConflicts.length > 0 && (
@@ -301,12 +324,29 @@ export default function MorningHuddlePage() {
       )}
 
       {/* ═══════ SOLVE TODAY ═══════ */}
-      {(openConflicts.length > 0 || activeConstraints.length > 0 || blockedWork.length > 0) && (
+      {(openConflicts.length > 0 || activeConstraints.length > 0 || blockedWork.length > 0 || urgentAlerts.length > 0) && (
         <div className="bg-red-500/5 rounded-2xl border border-red-500/15 p-5">
           <h2 className="text-red-400 font-bold text-lg flex items-center gap-2 mb-4">
-            <AlertTriangle className="w-5 h-5" /> Solve Today
+            <Flame className="w-5 h-5" /> Solve Today
           </h2>
           <div className="space-y-2">
+            {urgentAlerts.map(al => (
+              <Link key={al.id} href={`${base}/alerts`}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-800/40 border border-red-500/10 hover:border-red-500/30 transition-all group">
+                <Megaphone className={cn("w-4 h-4 flex-shrink-0", al.priority === "URGENT" ? "text-red-400" : "text-orange-400")} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium truncate">{al.title}</p>
+                  <p className="text-slate-500 text-xs">
+                    {al.alertType}{al.projectLocation ? ` - ${al.projectLocation.name}` : ""}
+                    {al.assignedTo ? ` · ${al.assignedTo.name}` : " · Unassigned"}
+                  </p>
+                </div>
+                <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border",
+                  al.priority === "URGENT" ? "text-red-400 bg-red-500/10 border-red-500/20" : "text-orange-400 bg-orange-500/10 border-orange-500/20"
+                )}>{al.priority}</span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-red-400" />
+              </Link>
+            ))}
             {openConflicts.map(c => (
               <Link key={c.id} href={`${base}/conflicts`}
                 className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-800/40 border border-orange-500/10 hover:border-orange-500/30 transition-all group">

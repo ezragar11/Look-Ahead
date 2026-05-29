@@ -1,14 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { getProjectRole, canManageWork } from "@/lib/access";
 import { parseLookaheadFile } from "@/lib/parser";
 import { cleanSubcontractorName } from "@/lib/utils";
 import { runConflictDetection } from "@/lib/conflicts";
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const projectId = formData.get("projectId") as string | null;
+
+    // Permission check: only work managers can upload schedules
+    if (projectId) {
+      const userId = (session.user as { id: string }).id;
+      const role = await getProjectRole(userId, projectId);
+      if (!canManageWork(role)) {
+        return NextResponse.json({ error: "View-only users cannot upload schedules" }, { status: 403 });
+      }
+    }
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });

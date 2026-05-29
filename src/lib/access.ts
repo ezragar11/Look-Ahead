@@ -1,50 +1,108 @@
 import { prisma } from "@/lib/prisma";
 
-/**
- * Check if a user has access to a project.
- * Returns true if:
- *  - User is PLATFORM_ADMIN (global role)
- *  - User is a member of the company that owns the project
- *  - User is directly assigned to the project via ProjectUser
- */
-export async function canAccessProject(
+// ── Role hierarchy ──────────────────────────────────────────────────────────
+// Higher number = more access. Used for comparison checks.
+
+export const PROJECT_ROLE_LEVEL: Record<string, number> = {
+  PROJECT_ADMIN:   100,
+  PROJECT_MANAGER:  80,
+  SUPERINTENDENT:   70,
+  ENGINEER:         60,
+  FIELD_ASSISTANT:  40,
+  SUBCONTRACTOR:    20,
+  OWNER_VIEWER:     10,
+};
+
+// Roles that can manage project work (not roles/deletion)
+const WORK_MANAGERS = ["PROJECT_ADMIN", "PROJECT_MANAGER", "SUPERINTENDENT", "ENGINEER"];
+
+// Roles that can assign/reassign alerts
+const ALERT_MANAGERS = ["PROJECT_ADMIN", "PROJECT_MANAGER", "SUPERINTENDENT", "ENGINEER"];
+
+// View-only roles (cannot edit project data beyond notes/documents/alerts)
+const VIEW_ONLY_ROLES = ["SUBCONTRACTOR", "OWNER_VIEWER"];
+
+// ── Get user's project role ─────────────────────────────────────────────────
+
+export async function getProjectRole(
   userId: string,
   projectId: string
-): Promise<boolean> {
-  // Check global role first
+): Promise<string | null> {
+  // PLATFORM_ADMIN gets PROJECT_ADMIN equivalent
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { globalRole: true },
   });
-  if (user?.globalRole === "PLATFORM_ADMIN") return true;
+  if (user?.globalRole === "PLATFORM_ADMIN") return "PROJECT_ADMIN";
 
-  // Check direct project assignment
   const pu = await prisma.projectUser.findUnique({
     where: { projectId_userId: { projectId, userId } },
   });
-  if (pu && pu.status === "ACTIVE") return true;
+  if (pu && pu.status === "ACTIVE") return pu.role;
 
-  // Check company membership (company members can see all company projects)
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { companyId: true },
-  });
+  // Fall back to company role mapping
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { companyId: true } });
   if (project?.companyId) {
     const cu = await prisma.companyUser.findUnique({
       where: { companyId_userId: { companyId: project.companyId, userId } },
     });
-    if (cu && cu.status === "ACTIVE") return true;
+    if (cu && cu.status === "ACTIVE") {
+      if (cu.role === "COMPANY_ADMIN") return "PROJECT_ADMIN";
+      if (cu.role === "OPERATIONS_MANAGER") return "PROJECT_MANAGER";
+      return "ENGINEER"; // default for other company members
+    }
   }
 
-  return false;
+  return null; // no access
 }
 
-/**
- * Check if a user has access to a company.
- * Returns true if:
- *  - User is PLATFORM_ADMIN
- *  - User is a member of the company via CompanyUser
- */
+// ── Permission checks ───────────────────────────────────────────────────────
+
+/** Only PROJECT_ADMIN can manage roles and delete projects */
+export function isProjectAdmin(role: string | null): boolean {
+  return role === "PROJECT_ADMIN";
+}
+
+/** Can manage project work: edit schedules, activities, conflicts, etc. */
+export function canManageWork(role: string | null): boolean {
+  return !!role && WORK_MANAGERS.includes(role);
+}
+
+/** Can assign/reassign alerts */
+export function canManageAlerts(role: string | null): boolean {
+  return !!role && ALERT_MANAGERS.includes(role);
+}
+
+/** Is view-only (subcontractor / viewer) */
+export function isViewOnly(role: string | null): boolean {
+  return !!role && VIEW_ONLY_ROLES.includes(role);
+}
+
+/** Can create alerts (everyone on the project) */
+export function canCreateAlerts(role: string | null): boolean {
+  return role !== null;
+}
+
+/** Can add field notes (everyone) */
+export function canAddNotes(role: string | null): boolean {
+  return role !== null;
+}
+
+/** Can upload documents (everyone except OWNER_VIEWER) */
+export function canUploadDocuments(role: string | null): boolean {
+  return !!role && role !== "OWNER_VIEWER";
+}
+
+// ── Access checks (from previous implementation) ────────────────────────────
+
+export async function canAccessProject(
+  userId: string,
+  projectId: string
+): Promise<boolean> {
+  const role = await getProjectRole(userId, projectId);
+  return role !== null;
+}
+
 export async function canAccessCompany(
   userId: string,
   companyId: string
@@ -61,10 +119,6 @@ export async function canAccessCompany(
   return !!cu && cu.status === "ACTIVE";
 }
 
-/**
- * Get projects a user can access within a company.
- * PLATFORM_ADMIN and company members see all. Others see only assigned projects.
- */
 export async function getAccessibleProjectIds(
   userId: string,
   companyId: string
@@ -78,12 +132,10 @@ export async function getAccessibleProjectIds(
   const cu = await prisma.companyUser.findUnique({
     where: { companyId_userId: { companyId, userId } },
   });
-  // Company admins/managers see all projects
   if (cu && cu.status === "ACTIVE" && ["COMPANY_ADMIN", "EXECUTIVE_VIEWER", "OPERATIONS_MANAGER"].includes(cu.role)) {
     return "all";
   }
 
-  // Others see only their assigned projects
   const projectUsers = await prisma.projectUser.findMany({
     where: { userId, status: "ACTIVE", project: { companyId } },
     select: { projectId: true },

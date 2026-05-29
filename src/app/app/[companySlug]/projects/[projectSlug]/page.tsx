@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   CheckCircle2, Clock, AlertTriangle, ShieldAlert, Upload,
   Calendar, Loader2, HardHat, ArrowRight, FolderOpen, TrendingDown,
-  Zap, Layers, Brain, Target, MapPin, Users, Flame, Eye,
+  Zap, Layers, Brain, Target, MapPin, Users, Flame, Eye, Megaphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +34,16 @@ interface ActivityItem {
   needsFollowUp: boolean;
 }
 
+interface AlertSummary {
+  id: string;
+  title: string;
+  priority: string;
+  status: string;
+  createdAt: string;
+  projectLocation: { id: string; name: string } | null;
+  assignedTo: { id: string; name: string } | null;
+}
+
 interface DashData {
   project: {
     id: string;
@@ -56,6 +66,7 @@ interface DashData {
     delayed: number; blocked: number; missed: number;
     openConflicts: number; openConstraints: number;
     todayCount: number; thisWeekCount: number; overdueCount: number; subsOnSite: number;
+    urgentAlerts?: number; myAlerts?: number; openAlerts?: number;
   };
   weekStart: string;
   weeks: WeekSummary[];
@@ -63,6 +74,7 @@ interface DashData {
   subsThisWeek: string[];
   overdue: ActivityItem[];
   recentActivities: ActivityItem[];
+  topAlerts?: AlertSummary[];
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -173,6 +185,13 @@ export default function ProjectDashboardPage() {
             <AlertTriangle className="w-5 h-5 text-orange-200 mb-1.5" />
             <p className="text-3xl font-black text-white">{s.openConflicts + s.openConstraints}</p>
             <p className="text-orange-200 text-[10px] font-bold uppercase tracking-wider">Open Issues</p>
+          </div>
+        )}
+        {(s.urgentAlerts ?? 0) > 0 && (
+          <div className="rounded-xl p-4 bg-gradient-to-br from-red-600 to-rose-700 shadow-lg">
+            <Megaphone className="w-5 h-5 text-red-200 mb-1.5" />
+            <p className="text-3xl font-black text-white">{s.urgentAlerts}</p>
+            <p className="text-red-200 text-[10px] font-bold uppercase tracking-wider">Urgent Alerts</p>
           </div>
         )}
       </div>
@@ -296,13 +315,26 @@ export default function ProjectDashboardPage() {
               View All <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
-          {data.overdue.length === 0 && s.openConflicts === 0 && s.openConstraints === 0 ? (
+          {data.overdue.length === 0 && s.openConflicts === 0 && s.openConstraints === 0 && (s.openAlerts ?? 0) === 0 ? (
             <div className="text-center py-4">
               <CheckCircle2 className="w-8 h-8 text-emerald-500/40 mx-auto mb-2" />
               <p className="text-emerald-400 text-sm font-medium">All clear — no overdue items.</p>
             </div>
           ) : (
             <div className="space-y-1.5">
+              {/* Urgent/high alerts */}
+              {(data.topAlerts ?? []).map((al) => (
+                <Link key={al.id} href={`${base}/alerts`} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-red-500/5 border border-red-500/10 hover:border-red-500/20 transition-all">
+                  <Megaphone className={cn("w-4 h-4 flex-shrink-0", al.priority === "URGENT" ? "text-red-400" : "text-orange-400")} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white text-sm truncate">{al.title}</p>
+                    <p className="text-slate-500 text-[11px]">
+                      {al.priority} · {al.projectLocation?.name ?? "No location"}{al.assignedTo ? ` · ${al.assignedTo.name}` : ""}
+                    </p>
+                  </div>
+                  <ArrowRight className="w-3 h-3 text-red-500/40 ml-auto flex-shrink-0" />
+                </Link>
+              ))}
               {s.openConflicts > 0 && (
                 <Link href={`${base}/conflicts`} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-orange-500/5 border border-orange-500/10 hover:border-orange-500/20 transition-all">
                   <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0" />

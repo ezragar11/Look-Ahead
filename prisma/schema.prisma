@@ -73,6 +73,9 @@ model User {
   exportLogs         ExportLog[]
   requestedApprovals ApprovalRequest[] @relation("RequestedBy")
   reviewedApprovals  ApprovalRequest[] @relation("ReviewedBy")
+  alertsAssigned     Alert[]           @relation("AlertAssignee")
+  alertsCreated      Alert[]           @relation("AlertCreator")
+  alertsResolved     Alert[]           @relation("AlertResolver")
 }
 
 model ProjectUser {
@@ -122,6 +125,7 @@ model Project {
   activities       Activity[]
   conflicts        Conflict[]
   locations        ProjectLocation[]
+  alerts           Alert[]
   notes            Note[]
   attachments      Attachment[]
   dailyReports     DailyReport[]
@@ -161,6 +165,7 @@ model ProjectLocation {
   project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   activities Activity[]
   conflicts  Conflict[]
+  alerts     Alert[]
 
   @@unique([projectId, name])
 }
@@ -207,6 +212,7 @@ model Subcontractor {
   activities Activity[]
   projects   SubcontractorProject[]
   delays     Delay[]
+  alerts     Alert[]
 }
 
 model SubcontractorProject {
@@ -266,6 +272,7 @@ model Activity {
   attachments   Attachment[]
   constraints   Constraint[]
   delays        Delay[]
+  alerts        Alert[]
 }
 
 model ActivityOccurrence {
@@ -379,6 +386,41 @@ model Delay {
   project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   activity      Activity?      @relation(fields: [activityId], references: [id])
   subcontractor Subcontractor? @relation(fields: [subcontractorId], references: [id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALERT  (daily / urgent field alerts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Alert {
+  id              String    @id @default(cuid())
+  projectId       String
+  title           String
+  description     String?
+  alertType       String    @default("GENERAL")  // SAFETY, ACCESS, MATERIAL, INSPECTION, SCHEDULE, CREW_CONFLICT, WEATHER, EQUIPMENT, GENERAL
+  priority        String    @default("MEDIUM")    // LOW | MEDIUM | HIGH | URGENT
+  status          String    @default("OPEN")      // OPEN | ASSIGNED | IN_PROGRESS | RESOLVED | CLOSED
+  locationId      String?                          // linked ProjectLocation
+  locationText    String?                          // free-text fallback
+  activityId      String?
+  subcontractorId String?
+  assignedToId    String?                          // user assigned to handle
+  createdById     String
+  resolvedById    String?
+  resolvedAt      DateTime?
+  resolutionNote  String?
+  deletedAt       DateTime?
+  deletedBy       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectLocation ProjectLocation? @relation(fields: [locationId], references: [id])
+  activity        Activity?        @relation(fields: [activityId], references: [id])
+  subcontractor   Subcontractor?   @relation(fields: [subcontractorId], references: [id])
+  assignedTo      User?            @relation("AlertAssignee", fields: [assignedToId], references: [id])
+  createdBy       User             @relation("AlertCreator", fields: [createdById], references: [id])
+  resolvedBy      User?            @relation("AlertResolver", fields: [resolvedById], references: [id])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

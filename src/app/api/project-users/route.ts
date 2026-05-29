@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { getProjectRole, isProjectAdmin } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,13 @@ export async function POST(req: NextRequest) {
     const { projectId, userId, email, role } = await req.json();
     if (!projectId) return NextResponse.json({ error: "projectId required" }, { status: 400 });
 
+    // Only project admins can add members
+    const sessionUserId = (session.user as { id: string }).id;
+    const callerRole = await getProjectRole(sessionUserId, projectId);
+    if (!isProjectAdmin(callerRole)) {
+      return NextResponse.json({ error: "Only project admins can add members" }, { status: 403 });
+    }
+
     // Find user by ID or email
     let targetUser;
     if (userId) {
@@ -77,8 +85,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User is already on this project" }, { status: 409 });
     }
 
-    const sessionUserId = (session.user as { id: string }).id;
-
     const member = await prisma.projectUser.create({
       data: {
         projectId,
@@ -106,6 +112,16 @@ export async function PATCH(req: NextRequest) {
 
     const { id, role, status } = await req.json();
     if (!id) return NextResponse.json({ error: "ProjectUser id required" }, { status: 400 });
+
+    // Look up the target projectUser to get projectId for role check
+    const target = await prisma.projectUser.findUnique({ where: { id } });
+    if (!target) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const sessionUserId = (session.user as { id: string }).id;
+    const callerRole = await getProjectRole(sessionUserId, target.projectId);
+    if (!isProjectAdmin(callerRole)) {
+      return NextResponse.json({ error: "Only project admins can change member roles" }, { status: 403 });
+    }
 
     const data: Record<string, unknown> = {};
     if (role) data.role = role;
@@ -136,6 +152,16 @@ export async function DELETE(req: NextRequest) {
 
     const { id } = await req.json();
     if (!id) return NextResponse.json({ error: "ProjectUser id required" }, { status: 400 });
+
+    // Look up the target projectUser to get projectId for role check
+    const target = await prisma.projectUser.findUnique({ where: { id } });
+    if (!target) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const sessionUserId = (session.user as { id: string }).id;
+    const callerRole = await getProjectRole(sessionUserId, target.projectId);
+    if (!isProjectAdmin(callerRole)) {
+      return NextResponse.json({ error: "Only project admins can remove members" }, { status: 403 });
+    }
 
     await prisma.projectUser.update({
       where: { id },

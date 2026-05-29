@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { getProjectRole, canManageWork } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,12 @@ export async function POST(
   try {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const userId = (session.user as { id: string }).id;
+    const role = await getProjectRole(userId, params.id);
+    if (!canManageWork(role)) {
+      return NextResponse.json({ error: "View-only users cannot create locations" }, { status: 403 });
+    }
 
     const body = await req.json();
     const { name, zone, floor, description, color } = body;
@@ -97,6 +104,12 @@ export async function PATCH(
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const userId = (session.user as { id: string }).id;
+    const role = await getProjectRole(userId, params.id);
+    if (!canManageWork(role)) {
+      return NextResponse.json({ error: "View-only users cannot edit locations" }, { status: 403 });
+    }
+
     const { id, ...updates } = await req.json();
     if (!id) return NextResponse.json({ error: "Location ID required" }, { status: 400 });
 
@@ -120,6 +133,12 @@ export async function DELETE(
   try {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const userId = (session.user as { id: string }).id;
+    const role = await getProjectRole(userId, params.id);
+    if (!canManageWork(role)) {
+      return NextResponse.json({ error: "View-only users cannot delete locations" }, { status: 403 });
+    }
 
     const { id } = await req.json();
     if (!id) return NextResponse.json({ error: "Location ID required" }, { status: 400 });

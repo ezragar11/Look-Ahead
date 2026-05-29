@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { getProjectRole, canManageWork } from "@/lib/access";
 
 export async function GET(req: NextRequest) {
   try {
@@ -48,8 +50,20 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const { id, ...updates } = await req.json();
     if (!id) return NextResponse.json({ error: "Conflict ID required" }, { status: 400 });
+
+    const conflict = await prisma.conflict.findUnique({ where: { id } });
+    if (!conflict) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const userId = (session.user as { id: string }).id;
+    const role = await getProjectRole(userId, conflict.projectId);
+    if (!canManageWork(role)) {
+      return NextResponse.json({ error: "View-only users cannot edit conflicts" }, { status: 403 });
+    }
 
     const updated = await prisma.conflict.update({
       where: { id },
@@ -65,8 +79,19 @@ export async function PATCH(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const body = await req.json();
     const { activityIds, ...conflictData } = body;
+
+    if (conflictData.projectId) {
+      const userId = (session.user as { id: string }).id;
+      const role = await getProjectRole(userId, conflictData.projectId);
+      if (!canManageWork(role)) {
+        return NextResponse.json({ error: "View-only users cannot create conflicts" }, { status: 403 });
+      }
+    }
 
     const conflict = await prisma.conflict.create({ data: conflictData });
 

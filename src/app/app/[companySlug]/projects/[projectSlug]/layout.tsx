@@ -74,6 +74,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         { href: base,                   label: "Dashboard",        icon: LayoutDashboard, color: "text-sky-400" },
         { href: `${base}/daily`,        label: "Daily Work Plan",  icon: ClipboardList,   color: "text-sky-300" },
         { href: `${base}/huddle`,       label: "Morning Huddle",   icon: Coffee,          color: "text-amber-400" },
+        { href: `${base}/alerts`,       label: "Alerts",           icon: Megaphone,       color: "text-red-400" },
       ],
     },
     {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, writeAuditLog } from "@/lib/auth";
+import { getProjectRole, canManageWork } from "@/lib/access";
 
 export async function GET(req: NextRequest) {
   try {
@@ -37,7 +38,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await getSession();
-    const body    = await req.json();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const body = await req.json();
+
+    const userId = (session.user as { id: string }).id;
+    if (body.projectId) {
+      const role = await getProjectRole(userId, body.projectId);
+      if (!canManageWork(role)) {
+        return NextResponse.json({ error: "View-only users cannot create constraints" }, { status: 403 });
+      }
+    }
 
     const constraint = await prisma.constraint.create({
       data: {
@@ -68,9 +79,20 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const session       = await getSession();
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const { id, ...updates } = await req.json();
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
+
+    const existing = await prisma.constraint.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const userId = (session.user as { id: string }).id;
+    const role = await getProjectRole(userId, existing.projectId);
+    if (!canManageWork(role)) {
+      return NextResponse.json({ error: "View-only users cannot edit constraints" }, { status: 403 });
+    }
 
     if (updates.status === "RESOLVED" && !updates.resolvedAt) {
       updates.resolvedAt = new Date();
@@ -105,8 +127,19 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const session = await getSession();
-    const { id }  = await req.json();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { id } = await req.json();
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
+
+    const existing = await prisma.constraint.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const userId = (session.user as { id: string }).id;
+    const role = await getProjectRole(userId, existing.projectId);
+    if (!canManageWork(role)) {
+      return NextResponse.json({ error: "View-only users cannot delete constraints" }, { status: 403 });
+    }
 
     const constraint = await prisma.constraint.update({
       where: { id },

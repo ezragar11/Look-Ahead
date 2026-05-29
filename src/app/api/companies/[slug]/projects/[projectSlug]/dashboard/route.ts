@@ -114,8 +114,8 @@ export async function GET(
       return new Date(a.plannedFinish) < today;
     });
 
-    // Conflicts & constraints — count anything NOT resolved/closed as "open"
-    const [openConflicts, openConstraints] = await Promise.all([
+    // Conflicts, constraints, alerts — count anything NOT resolved/closed as "open"
+    const [openConflicts, openConstraints, urgentAlerts, myAlerts, openAlerts] = await Promise.all([
       prisma.conflict.count({
         where: {
           projectId: project.id,
@@ -124,7 +124,27 @@ export async function GET(
         },
       }),
       prisma.constraint.count({ where: { projectId: project.id, status: { in: ["OPEN", "IN_PROGRESS"] }, deletedAt: null } }),
+      prisma.alert.count({
+        where: { projectId: project.id, deletedAt: null, priority: "URGENT", status: { notIn: ["RESOLVED", "CLOSED"] } },
+      }),
+      prisma.alert.count({
+        where: { projectId: project.id, deletedAt: null, assignedToId: userId, status: { notIn: ["RESOLVED", "CLOSED"] } },
+      }),
+      prisma.alert.count({
+        where: { projectId: project.id, deletedAt: null, status: { notIn: ["RESOLVED", "CLOSED"] } },
+      }),
     ]);
+
+    // Top 5 urgent/high alerts for dashboard display
+    const topAlerts = await prisma.alert.findMany({
+      where: { projectId: project.id, deletedAt: null, status: { notIn: ["RESOLVED", "CLOSED"] }, priority: { in: ["URGENT", "HIGH"] } },
+      include: {
+        projectLocation: { select: { id: true, name: true } },
+        assignedTo: { select: { id: true, name: true } },
+      },
+      orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
+      take: 5,
+    });
 
     // Recent 10 activities for feed
     const recentActivities = allActivities.slice(0, 15);
@@ -157,6 +177,9 @@ export async function GET(
         thisWeekCount: thisWeekActivities.length,
         overdueCount: overdue.length,
         subsOnSite: subsThisWeek.length,
+        urgentAlerts,
+        myAlerts,
+        openAlerts,
       },
       // 3-week lookahead breakdown
       weekStart: monday.toISOString(),
@@ -183,6 +206,7 @@ export async function GET(
       subsThisWeek,
       overdue: overdue.slice(0, 10),
       recentActivities,
+      topAlerts,
     });
   } catch (err) {
     console.error("GET .../projects/[projectSlug]/dashboard error:", err);

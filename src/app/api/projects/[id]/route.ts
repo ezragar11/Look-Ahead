@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { getProjectRole, canManageWork } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,12 @@ export async function PATCH(
   try {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const userId = (session.user as { id: string }).id;
+    const role = await getProjectRole(userId, params.id);
+    if (!canManageWork(role)) {
+      return NextResponse.json({ error: "View-only users cannot edit project settings" }, { status: 403 });
+    }
 
     const body = await req.json();
     const { projectName, description, mapSitePlanId } = body;

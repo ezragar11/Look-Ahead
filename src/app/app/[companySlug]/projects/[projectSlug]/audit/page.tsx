@@ -26,7 +26,7 @@ const ACTION_COLORS: Record<string, string> = {
   DELETED: "text-red-400 bg-red-500/15",
 };
 
-const ENTITY_TYPES = ["", "ACTIVITY", "CONFLICT", "CONSTRAINT", "DELAY", "LOOKAHEAD", "PROJECT"];
+const ENTITY_TYPES = ["", "ACTIVITY", "ALERT", "CONFLICT", "CONSTRAINT", "DELAY", "LOOKAHEAD", "PROJECT"];
 const ACTIONS = ["", "CREATED", "UPDATED", "STATUS_CHANGED", "DELETED"];
 
 const PAGE_SIZE = 50;
@@ -188,7 +188,7 @@ export default function ProjectAuditPage() {
                       </div>
                       <span className="text-slate-600 text-[11px] flex-shrink-0 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {new Date(l.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {(() => { try { return new Date(l.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return "—"; } })()}
                       </span>
                     </div>
                   );

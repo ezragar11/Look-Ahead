@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, writeAuditLog } from "@/lib/auth";
+import { getProjectRole, canManageWork } from "@/lib/access";
 
 export async function GET(
   _req: NextRequest,
@@ -44,6 +45,8 @@ export async function PATCH(
 ) {
   try {
     const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const updates = await req.json();
 
     const current = await prisma.activity.findUnique({ where: { id: params.id } });
@@ -51,7 +54,11 @@ export async function PATCH(
       return NextResponse.json({ error: "Activity not found" }, { status: 404 });
     }
 
-    const userId    = (session?.user as { id?: string } | undefined)?.id;
+    const userId = (session.user as { id: string }).id;
+    const role = await getProjectRole(userId, current.projectId);
+    if (!canManageWork(role)) {
+      return NextResponse.json({ error: "View-only users cannot edit activities" }, { status: 403 });
+    }
     const changedBy = session?.user?.name ?? updates.changedBy ?? "Unknown";
 
     // Audit tracked fields
