@@ -11,13 +11,13 @@ export async function POST(req: NextRequest) {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const userId = (session.user as { id: string }).id;
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const projectId = formData.get("projectId") as string | null;
 
     // Permission check: only work managers can upload schedules
     if (projectId) {
-      const userId = (session.user as { id: string }).id;
       const role = await getProjectRole(userId, projectId);
       if (!canManageWork(role)) {
         return NextResponse.json({ error: "View-only users cannot upload schedules" }, { status: 403 });
@@ -73,6 +73,20 @@ export async function POST(req: NextRequest) {
         sourceFileName: file.name,
         startDate:      parsed.startDate,
         endDate:        parsed.endDate,
+        createdBy:      userId,
+      },
+    });
+
+    // Audit log: upload event
+    await prisma.auditLog.create({
+      data: {
+        projectId: project.id,
+        userId,
+        changedBy: userId,
+        entityType: "LOOKAHEAD",
+        entityId: lookahead.id,
+        action: "CREATED",
+        newValue: file.name,
       },
     });
 
@@ -84,6 +98,20 @@ export async function POST(req: NextRequest) {
     const locationMap = new Map<string, string>();
     for (const loc of projectLocations) {
       locationMap.set(loc.name.toLowerCase().trim(), loc.id);
+    }
+
+    // Auto-create ProjectLocations for any new location text in the upload
+    const seenLocations = new Set<string>();
+    for (const pa of parsed.activities) {
+      const locText = pa.location?.trim();
+      if (!locText) continue;
+      const key = locText.toLowerCase();
+      if (locationMap.has(key) || seenLocations.has(key)) continue;
+      seenLocations.add(key);
+      const newLoc = await prisma.projectLocation.create({
+        data: { projectId: project.id, name: locText, sortOrder: locationMap.size + seenLocations.size },
+      });
+      locationMap.set(key, newLoc.id);
     }
 
     const subCache = new Map<string, string>();

@@ -14,6 +14,9 @@ export async function GET(req: NextRequest) {
 
     const notes = await prisma.note.findMany({
       where: { projectId, deletedAt: null },
+      include: {
+        activity: { select: { id: true, activityDescription: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -26,7 +29,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { activityId, conflictId, projectId, noteText, author } = await req.json();
+    const session = await getSession();
+    const userName = session?.user ? (session.user as { name?: string }).name ?? "Field User" : "Field User";
+
+    const { activityId, conflictId, projectId, noteText, author, isPublic } = await req.json();
 
     if (!noteText?.trim()) {
       return NextResponse.json({ error: "Note text is required" }, { status: 400 });
@@ -38,7 +44,8 @@ export async function POST(req: NextRequest) {
         conflictId: conflictId ?? null,
         projectId:  projectId ?? null,
         noteText:   noteText.trim(),
-        author:     author ?? "Field User",
+        author:     author ?? userName,
+        isPublic:   isPublic ?? false,
       },
     });
 
@@ -55,7 +62,7 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "Note ID required" }, { status: 400 });
 
-    await prisma.note.delete({ where: { id } });
+    await prisma.note.update({ where: { id }, data: { deletedAt: new Date() } });
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("DELETE /api/notes error:", err);

@@ -6,7 +6,8 @@ import Link from "next/link";
 import {
   CalendarDays, Loader2, CheckCircle2, Clock, AlertTriangle, Zap,
   ChevronLeft, ChevronRight, HardHat, MapPin, ShieldAlert,
-  Package, ClipboardCheck, Printer, RefreshCw, Eye,
+  Package, ClipboardCheck, RefreshCw, Eye, MessageSquarePlus,
+  Ban, PauseCircle, MoveRight, StickyNote, BellRing, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -49,11 +50,21 @@ export default function DailyWorkPlanPage() {
   const { companySlug, projectSlug } = useParams<{ companySlug: string; projectSlug: string }>();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [conflicts, setConflicts]   = useState<Conflict[]>([]);
+  const [projectId, setProjectId]   = useState<string | null>(null);
   const [loading, setLoading]       = useState(true);
   const [viewDate, setViewDate]     = useState(new Date());
   const [viewMode, setViewMode]     = useState<ViewMode>("bySub");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [saving, setSaving]         = useState<Record<string, boolean>>({});
+
+  // Inline action modals
+  const [noteModal, setNoteModal]   = useState<string | null>(null); // activityId
+  const [noteText, setNoteText]     = useState("");
+  const [alertModal, setAlertModal] = useState<string | null>(null);
+  const [alertTitle, setAlertTitle] = useState("");
+  const [alertPriority, setAlertPriority] = useState("MEDIUM");
+  const [moveModal, setMoveModal]   = useState<string | null>(null);
+  const [moveDate, setMoveDate]     = useState("");
 
   const base = `/app/${companySlug}/projects/${projectSlug}`;
 
@@ -63,6 +74,7 @@ export default function DailyWorkPlanPage() {
       const pRes = await fetch(`/api/companies/${companySlug}/projects/${projectSlug}`);
       if (!pRes.ok) { setLoading(false); return; }
       const proj = await pRes.json();
+      setProjectId(proj.id);
       const [aRes, cRes] = await Promise.all([
         fetch(`/api/activities?projectId=${proj.id}`),
         fetch(`/api/conflicts?projectId=${proj.id}`),
@@ -99,6 +111,10 @@ export default function DailyWorkPlanPage() {
   });
   allDay.forEach(a => { byStatus[a.status] = (byStatus[a.status] || 0) + 1; });
 
+  // Subs + locations for this day (computed BEFORE dayConflicts)
+  const subsToday = [...new Set(allDay.map(a => a.responsibleSubcontractorRaw).filter(Boolean))];
+  const locationsToday = [...new Set(allDay.map(a => a.location).filter((x): x is string => !!x))];
+
   // Group by selected mode
   function groupActivities(): Array<{ key: string; label: string; items: Activity[] }> {
     const map = new Map<string, Activity[]>();
@@ -123,11 +139,10 @@ export default function DailyWorkPlanPage() {
   // Open conflicts relevant to today's active areas
   const dayConflicts = conflicts.filter(c => {
     if (c.status !== "OPEN" && c.status !== "UNDER_REVIEW") return false;
-    // If conflict has a location, only show it if crews are in that area today
     if (c.location && locationsToday.length > 0) {
       return locationsToday.some(l => l.toLowerCase() === (c.location ?? "").toLowerCase());
     }
-    return true; // Show location-less conflicts always
+    return true;
   });
 
   // Inline status update
@@ -146,15 +161,69 @@ export default function DailyWorkPlanPage() {
     finally { setSaving(prev => ({ ...prev, [activityId]: false })); }
   }
 
+  // Add field note
+  async function submitNote() {
+    if (!noteModal || !noteText.trim() || !projectId) return;
+    try {
+      await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, activityId: noteModal, noteText: noteText.trim(), isPublic: true }),
+      });
+    } catch { /* ignore */ }
+    setNoteModal(null);
+    setNoteText("");
+  }
+
+  // Add alert
+  async function submitAlert() {
+    if (!alertModal || !alertTitle.trim() || !projectId) return;
+    const activity = activities.find(a => a.id === alertModal);
+    try {
+      await fetch(`/api/projects/${projectId}/alerts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: alertTitle.trim(),
+          priority: alertPriority,
+          alertType: "GENERAL",
+          activityId: alertModal,
+          locationText: activity?.location ?? undefined,
+        }),
+      });
+    } catch { /* ignore */ }
+    setAlertModal(null);
+    setAlertTitle("");
+    setAlertPriority("MEDIUM");
+  }
+
+  // Move activity to another date
+  async function submitMove() {
+    if (!moveModal || !moveDate) return;
+    try {
+      const activity = activities.find(a => a.id === moveModal);
+      const start = new Date(moveDate + "T07:00:00");
+      let finish = start;
+      if (activity?.plannedStart && activity?.plannedFinish) {
+        const dur = new Date(activity.plannedFinish).getTime() - new Date(activity.plannedStart).getTime();
+        finish = new Date(start.getTime() + dur);
+      }
+      await fetch(`/api/activities/${moveModal}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plannedStart: start.toISOString(), plannedFinish: finish.toISOString() }),
+      });
+      await load();
+    } catch { /* ignore */ }
+    setMoveModal(null);
+    setMoveDate("");
+  }
+
   function shiftDay(n: number) {
     const d = new Date(viewDate);
     d.setDate(d.getDate() + n);
     setViewDate(d);
   }
-
-  // Subcontractors on this day
-  const subsToday = [...new Set(allDay.map(a => a.responsibleSubcontractorRaw).filter(Boolean))];
-  const locationsToday = [...new Set(allDay.map(a => a.location).filter((x): x is string => !!x))];
 
   if (loading) {
     return (
@@ -215,7 +284,6 @@ export default function DailyWorkPlanPage() {
 
       {/* ═══════ Status Filter + View Mode ═══════ */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Status chips */}
         <button
           onClick={() => setStatusFilter(null)}
           className={cn("text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all",
@@ -294,7 +362,6 @@ export default function DailyWorkPlanPage() {
         <div className="space-y-5">
           {groups.map(group => (
             <div key={group.key}>
-              {/* Group header */}
               {viewMode !== "all" && (
                 <div className="flex items-center gap-2 mb-3">
                   {viewMode === "bySub" && <HardHat className="w-4 h-4 text-amber-400" />}
@@ -305,7 +372,6 @@ export default function DailyWorkPlanPage() {
                 </div>
               )}
 
-              {/* Activity cards */}
               <div className="space-y-2">
                 {group.items.map((a) => {
                   const cfg = STATUS_CONFIG[a.status] ?? STATUS_CONFIG.PLANNED;
@@ -313,69 +379,96 @@ export default function DailyWorkPlanPage() {
                   const isSaving = saving[a.id];
 
                   return (
-                    <div key={a.id} className={cn("rounded-xl border p-4 flex items-start gap-4 transition-all hover:border-slate-600", cfg.bg, cfg.border)}>
-                      {/* Status icon */}
-                      <div className="w-10 h-10 rounded-xl bg-slate-800/60 flex items-center justify-center flex-shrink-0">
-                        <Icon className={cn("w-5 h-5", cfg.color)} />
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white font-semibold">{a.activityDescription}</p>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
-                          {viewMode !== "bySub" && a.responsibleSubcontractorRaw && (
-                            <span className="text-slate-400 text-xs flex items-center gap-1">
-                              <HardHat className="w-3 h-3 text-amber-500/60" /> {a.responsibleSubcontractorRaw}
-                            </span>
-                          )}
-                          {viewMode !== "byCategory" && a.category && (
-                            <span className="text-slate-500 text-xs">{a.category}</span>
-                          )}
-                          {viewMode !== "byLocation" && a.location && (
-                            <span className="text-slate-500 text-xs flex items-center gap-1">
-                              <MapPin className="w-3 h-3" /> {a.location}
-                            </span>
-                          )}
-                          {a.needsFollowUp && (
-                            <span className="text-purple-400 text-xs flex items-center gap-1">
-                              <ClipboardCheck className="w-3 h-3" /> Follow-Up
-                            </span>
-                          )}
+                    <div key={a.id} className={cn("rounded-xl border p-4 transition-all hover:border-slate-600", cfg.bg, cfg.border)}>
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-slate-800/60 flex items-center justify-center flex-shrink-0">
+                          <Icon className={cn("w-5 h-5", cfg.color)} />
                         </div>
-                      </div>
 
-                      {/* Right side: progress + quick actions */}
-                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                        <span className={cn("text-[10px] font-bold px-2.5 py-1 rounded-full border", cfg.bg, cfg.color, cfg.border)}>
-                          {cfg.label}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                            <div className={cn("h-full rounded-full", a.percentComplete >= 100 ? "bg-emerald-500" : "bg-sky-500")} style={{ width: `${a.percentComplete}%` }} />
-                          </div>
-                          <span className="text-slate-500 text-[10px] w-8 text-right">{a.percentComplete}%</span>
-                        </div>
-                        {/* Quick status buttons */}
-                        {a.status !== "COMPLETE" && (
-                          <div className="flex items-center gap-1">
-                            {a.status === "PLANNED" && (
-                              <button
-                                onClick={() => updateStatus(a.id, "IN_PROGRESS")}
-                                disabled={isSaving}
-                                className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition-colors disabled:opacity-50"
-                              >
-                                Start
-                              </button>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-semibold">{a.activityDescription}</p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
+                            {viewMode !== "bySub" && a.responsibleSubcontractorRaw && (
+                              <span className="text-slate-400 text-xs flex items-center gap-1">
+                                <HardHat className="w-3 h-3 text-amber-500/60" /> {a.responsibleSubcontractorRaw}
+                              </span>
                             )}
-                            <button
-                              onClick={() => updateStatus(a.id, "COMPLETE")}
-                              disabled={isSaving}
-                              className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
-                            >
-                              Done
-                            </button>
+                            {viewMode !== "byCategory" && a.category && (
+                              <span className="text-slate-500 text-xs">{a.category}</span>
+                            )}
+                            {viewMode !== "byLocation" && a.location && (
+                              <span className="text-slate-500 text-xs flex items-center gap-1">
+                                <MapPin className="w-3 h-3" /> {a.location}
+                              </span>
+                            )}
+                            {a.needsFollowUp && (
+                              <span className="text-purple-400 text-xs flex items-center gap-1">
+                                <ClipboardCheck className="w-3 h-3" /> Follow-Up
+                              </span>
+                            )}
                           </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                          <span className={cn("text-[10px] font-bold px-2.5 py-1 rounded-full border", cfg.bg, cfg.color, cfg.border)}>
+                            {cfg.label}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                              <div className={cn("h-full rounded-full", a.percentComplete >= 100 ? "bg-emerald-500" : "bg-sky-500")} style={{ width: `${a.percentComplete}%` }} />
+                            </div>
+                            <span className="text-slate-500 text-[10px] w-8 text-right">{a.percentComplete}%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ── Action bar ── */}
+                      <div className="flex items-center gap-1 mt-3 pt-3 border-t border-slate-700/30 flex-wrap">
+                        {/* Status actions */}
+                        {a.status === "PLANNED" && (
+                          <button onClick={() => updateStatus(a.id, "IN_PROGRESS")} disabled={isSaving}
+                            className="text-[10px] px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition-colors disabled:opacity-50 flex items-center gap-1">
+                            <Zap className="w-3 h-3" /> Start
+                          </button>
                         )}
+                        {a.status !== "COMPLETE" && (
+                          <button onClick={() => updateStatus(a.id, "COMPLETE")} disabled={isSaving}
+                            className="text-[10px] px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors disabled:opacity-50 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Done
+                          </button>
+                        )}
+                        {a.status !== "DELAYED" && a.status !== "COMPLETE" && (
+                          <button onClick={() => updateStatus(a.id, "DELAYED")} disabled={isSaving}
+                            className="text-[10px] px-2.5 py-1 rounded-lg bg-red-500/10 text-red-300 hover:bg-red-500/20 transition-colors disabled:opacity-50 flex items-center gap-1">
+                            <PauseCircle className="w-3 h-3" /> Delayed
+                          </button>
+                        )}
+                        {a.status !== "BLOCKED" && a.status !== "COMPLETE" && (
+                          <button onClick={() => updateStatus(a.id, "BLOCKED")} disabled={isSaving}
+                            className="text-[10px] px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 transition-colors disabled:opacity-50 flex items-center gap-1">
+                            <Ban className="w-3 h-3" /> Blocked
+                          </button>
+                        )}
+
+                        <div className="w-px h-4 bg-slate-700/50 mx-1" />
+
+                        {/* Add note */}
+                        <button onClick={() => { setNoteModal(a.id); setNoteText(""); }}
+                          className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-700/30 text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors flex items-center gap-1">
+                          <StickyNote className="w-3 h-3" /> Note
+                        </button>
+
+                        {/* Add alert */}
+                        <button onClick={() => { setAlertModal(a.id); setAlertTitle(""); setAlertPriority("MEDIUM"); }}
+                          className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-700/30 text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors flex items-center gap-1">
+                          <BellRing className="w-3 h-3" /> Alert
+                        </button>
+
+                        {/* Move date */}
+                        <button onClick={() => { setMoveModal(a.id); setMoveDate(""); }}
+                          className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-700/30 text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors flex items-center gap-1">
+                          <MoveRight className="w-3 h-3" /> Move
+                        </button>
                       </div>
                     </div>
                   );
@@ -394,6 +487,91 @@ export default function DailyWorkPlanPage() {
             {subsToday.map(sub => (
               <span key={sub!} className="px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-semibold">{sub}</span>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ Add Note Modal ═══════ */}
+      {noteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setNoteModal(null)}>
+          <div className="bg-slate-900 rounded-2xl border border-slate-700 p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-bold">Add Field Note</h3>
+              <button onClick={() => setNoteModal(null)} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <textarea
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              placeholder="What happened on site?"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 h-24 resize-none"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setNoteModal(null)} className="px-4 py-2 text-sm text-slate-400 hover:text-white">Cancel</button>
+              <button onClick={submitNote} disabled={!noteText.trim()}
+                className="px-4 py-2 text-sm bg-sky-600 text-white rounded-lg hover:bg-sky-500 disabled:opacity-40 transition-colors">
+                Save Note
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ Add Alert Modal ═══════ */}
+      {alertModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setAlertModal(null)}>
+          <div className="bg-slate-900 rounded-2xl border border-slate-700 p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-bold">Create Alert</h3>
+              <button onClick={() => setAlertModal(null)} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <input
+              value={alertTitle}
+              onChange={e => setAlertTitle(e.target.value)}
+              placeholder="Alert title"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 mb-3"
+              autoFocus
+            />
+            <select value={alertPriority} onChange={e => setAlertPriority(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500">
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+              <option value="URGENT">Urgent</option>
+            </select>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setAlertModal(null)} className="px-4 py-2 text-sm text-slate-400 hover:text-white">Cancel</button>
+              <button onClick={submitAlert} disabled={!alertTitle.trim()}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-500 disabled:opacity-40 transition-colors">
+                Create Alert
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ Move Date Modal ═══════ */}
+      {moveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setMoveModal(null)}>
+          <div className="bg-slate-900 rounded-2xl border border-slate-700 p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-bold">Move to Another Date</h3>
+              <button onClick={() => setMoveModal(null)} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <input
+              type="date"
+              value={moveDate}
+              onChange={e => setMoveDate(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setMoveModal(null)} className="px-4 py-2 text-sm text-slate-400 hover:text-white">Cancel</button>
+              <button onClick={submitMove} disabled={!moveDate}
+                className="px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-500 disabled:opacity-40 transition-colors">
+                Move Activity
+              </button>
+            </div>
           </div>
         </div>
       )}
