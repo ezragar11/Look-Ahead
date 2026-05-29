@@ -13,6 +13,7 @@ import {
   FileText, Brain, Settings, Layers, Bell, StickyNote,
   Megaphone, Coffee, Map, MapPin, Compass,
 } from "lucide-react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 interface ProjectInfo {
   id: string;
@@ -239,7 +240,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
 
       <main className="ml-64 flex-1 min-h-screen bg-slate-950">
         <div className="max-w-[1600px] mx-auto px-8 py-8">
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
         </div>
       </main>
     </div>

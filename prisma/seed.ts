@@ -7,6 +7,7 @@
 
 import { PrismaClient } from "@prisma/client";
 import { readFileSync } from "fs";
+import { hashSync } from "bcryptjs";
 
 // Load env vars from .env.local (Next.js does this automatically, but tsx doesn't)
 try {
@@ -412,6 +413,41 @@ async function main() {
     });
   }
   console.log("  ✓ 6 audit log entries");
+
+  // 12. Demo users with different roles ──────────────────────────────────────
+  const demoPassword = hashSync("demo1234", 12);
+  const demoUsers = [
+    { name: "Maria Chen",       email: "maria@demo.lookaheadpro.com",   role: "PROJECT_MANAGER" },
+    { name: "James Thompson",   email: "james@demo.lookaheadpro.com",   role: "SUPERINTENDENT" },
+    { name: "Sarah Kim",        email: "sarah@demo.lookaheadpro.com",   role: "ENGINEER" },
+    { name: "Mike Rodriguez",   email: "mike@demo.lookaheadpro.com",    role: "SUBCONTRACTOR" },
+    { name: "Pat Davis",        email: "pat@demo.lookaheadpro.com",     role: "OWNER_VIEWER" },
+  ];
+
+  for (const du of demoUsers) {
+    const demoUser = await prisma.user.upsert({
+      where: { email: du.email },
+      update: { name: du.name, passwordHash: demoPassword },
+      create: {
+        name: du.name,
+        email: du.email,
+        passwordHash: demoPassword,
+        status: "ACTIVE",
+        globalRole: "USER",
+      },
+    });
+    await prisma.companyUser.upsert({
+      where: { companyId_userId: { companyId: company.id, userId: demoUser.id } },
+      update: { role: du.role === "SUBCONTRACTOR" || du.role === "OWNER_VIEWER" ? "VIEWER" : "OPERATIONS_MANAGER" },
+      create: { companyId: company.id, userId: demoUser.id, role: du.role === "SUBCONTRACTOR" || du.role === "OWNER_VIEWER" ? "VIEWER" : "OPERATIONS_MANAGER", status: "ACTIVE" },
+    });
+    await prisma.projectUser.upsert({
+      where: { projectId_userId: { projectId: project.id, userId: demoUser.id } },
+      update: { role: du.role },
+      create: { projectId: project.id, userId: demoUser.id, role: du.role, status: "ACTIVE" },
+    });
+  }
+  console.log("  ✓ 5 demo users (password: demo1234)");
 
   console.log("\n✅ Seed complete.");
 }

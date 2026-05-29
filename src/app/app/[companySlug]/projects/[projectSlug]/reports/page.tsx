@@ -179,6 +179,76 @@ export default function ProjectReportsPage() {
     MISSED: { color: "bg-rose-500", label: "Missed" },
   };
 
+  function exportCSV() {
+    let rows: string[][] = [];
+    let filename = "report";
+
+    switch (report) {
+      case "overview":
+      case "weekly":
+      case "3week": {
+        const list = report === "weekly" ? thisWeekActivities : report === "3week" ? threeWeekActivities : filtered;
+        rows = [
+          ["Activity", "Status", "% Complete", "Subcontractor", "Location", "Start", "Finish", "Priority"],
+          ...list.map(a => [
+            a.activityDescription, a.status, String(a.percentComplete),
+            a.responsibleSubcontractorRaw ?? "", a.location ?? "",
+            a.plannedStart ?? "", a.plannedFinish ?? "", a.priority,
+          ]),
+        ];
+        filename = report === "weekly" ? "weekly-report" : report === "3week" ? "3week-lookahead" : "activities-overview";
+        break;
+      }
+      case "conflicts":
+        rows = [
+          ["Title", "Severity", "Status", "Type", "Location", "Date Identified", "Description"],
+          ...openConflicts.map(c => [c.title, c.severity, c.status, c.conflictType, c.location ?? "", c.dateIdentified, c.description ?? ""]),
+        ];
+        filename = "conflicts";
+        break;
+      case "alerts":
+        rows = [
+          ["Title", "Priority", "Status", "Type", "Location", "Created", "Description"],
+          ...filteredAlerts.map(a => [a.title, a.priority, a.status, a.alertType, a.locationText ?? "", a.createdAt, a.description ?? ""]),
+        ];
+        filename = "alerts";
+        break;
+      case "notes":
+        rows = [
+          ["Note", "Author", "Created", "Related Activity"],
+          ...notes.map(n => [n.noteText, n.author ?? "", n.createdAt, n.activity?.activityDescription ?? ""]),
+        ];
+        filename = "field-notes";
+        break;
+      case "area":
+        rows = [
+          ["Location", "Activities", "Crews", "Crew Names"],
+          ...Object.entries(byLocation).map(([loc, d]) => [loc, String(d.total), String(d.subs.size), [...d.subs].join("; ")]),
+        ];
+        filename = "area-coordination";
+        break;
+      case "subs":
+        rows = [
+          ["Subcontractor", "Total", "Complete", "In Progress", "Delayed", "% Complete"],
+          ...Object.entries(bySub).map(([sub, d]) => [
+            sub, String(d.total), String(d.complete), String(d.inProgress), String(d.delayed),
+            d.total > 0 ? String(Math.round((d.complete / d.total) * 100)) : "0",
+          ]),
+        ];
+        filename = "subcontractors";
+        break;
+    }
+
+    const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${filename}-${todayStr}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 text-sky-500 animate-spin" /></div>;
 
   return (
@@ -188,6 +258,10 @@ export default function ProjectReportsPage() {
           <h1 className="text-2xl font-bold text-white">Reports</h1>
           <p className="text-slate-500 text-sm mt-1">Project analytics and performance metrics</p>
         </div>
+        <button onClick={exportCSV}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors shadow-lg shadow-emerald-500/10">
+          <Download className="w-4 h-4" /> Export CSV
+        </button>
       </div>
 
       {/* ═══════ Report Tabs ═══════ */}
