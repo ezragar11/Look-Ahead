@@ -15,8 +15,8 @@ export async function GET(req: NextRequest) {
     const subName      = searchParams.get("subcontractor");
     const search       = searchParams.get("search");
     const paginated    = searchParams.has("page");
-    const page         = parseInt(searchParams.get("page") ?? "1");
-    const limit        = parseInt(searchParams.get("limit") ?? "500");
+    const page         = Math.max(1, parseInt(searchParams.get("page") ?? "1") || 1);
+    const limit        = Math.min(1000, Math.max(1, parseInt(searchParams.get("limit") ?? "500") || 500));
 
     const where: Record<string, unknown> = { deletedAt: null };
 
@@ -73,10 +73,21 @@ export async function PATCH(req: NextRequest) {
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const { id, ...updates } = body;
+    const { id, ...raw } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Activity ID required" }, { status: 400 });
+    }
+
+    const ALLOWED_FIELDS = new Set([
+      "status", "percentComplete", "actualStart", "actualFinish",
+      "plannedStart", "plannedFinish", "delayReason", "priority",
+      "responsibleSubcontractorRaw", "location", "category",
+      "activityDescription", "locationId",
+    ]);
+    const updates: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (ALLOWED_FIELDS.has(k)) updates[k] = v;
     }
 
     const current = await prisma.activity.findUnique({ where: { id } });

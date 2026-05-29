@@ -37,6 +37,9 @@ export async function POST(req: NextRequest) {
     if (!noteText?.trim()) {
       return NextResponse.json({ error: "Note text is required" }, { status: 400 });
     }
+    if (noteText.length > 5000) {
+      return NextResponse.json({ error: "Note text too long (max 5000 chars)" }, { status: 400 });
+    }
 
     const note = await prisma.note.create({
       data: {

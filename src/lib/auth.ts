@@ -48,13 +48,21 @@ export const authOptions: NextAuthOptions = {
         if (!user || user.status === "SUSPENDED") return null;
 
         const valid = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (!valid) return null;
+        if (!valid) {
+          await prisma.auditLog.create({
+            data: { userId: user.id, changedBy: user.id, entityType: "USER", entityId: user.id, action: "LOGIN_FAILED" },
+          }).catch(() => {});
+          return null;
+        }
 
-        // Update last login
         await prisma.user.update({
           where: { id: user.id },
           data:  { lastLoginAt: new Date() },
         });
+
+        await prisma.auditLog.create({
+          data: { userId: user.id, changedBy: user.id, entityType: "USER", entityId: user.id, action: "LOGIN_SUCCESS" },
+        }).catch(() => {});
 
         return {
           id:         user.id,
