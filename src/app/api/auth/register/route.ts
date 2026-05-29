@@ -10,11 +10,20 @@ export async function POST(req: NextRequest) {
   try {
     const { name, email, password, company, phone } = await req.json();
 
-    if (!name || !email || !password) {
+    if (!name?.trim() || !email?.trim() || !password) {
       return NextResponse.json({ error: "Name, email, and password are required" }, { status: 400 });
     }
     if (password.length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
+    }
+    if (password.length > 128) {
+      return NextResponse.json({ error: "Password too long" }, { status: 400 });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
+    }
+    if (name.length > 200 || email.length > 254) {
+      return NextResponse.json({ error: "Name or email too long" }, { status: 400 });
     }
 
     const userCount = await prisma.user.count();
