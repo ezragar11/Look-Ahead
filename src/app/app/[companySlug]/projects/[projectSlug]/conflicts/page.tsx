@@ -233,6 +233,15 @@ export default function ConflictsPage() {
     finally { setUpdatingStatus(prev => ({ ...prev, [id]: false })); }
   }
 
+  async function deleteConflict(id: string) {
+    if (!confirm("Delete this conflict?")) return;
+    try {
+      const res = await fetch(`/api/conflicts/${id}`, { method: "DELETE" });
+      if (res.ok) { toast.success("Conflict deleted"); load(); }
+      else toast.error("Failed to delete");
+    } catch { toast.error("Failed to delete"); }
+  }
+
   async function loadDeleted() {
     if (!projectId) return;
     const res = await fetch(`/api/conflicts?projectId=${projectId}&deleted=only`);
@@ -587,6 +596,10 @@ export default function ConflictsPage() {
                             Resolve
                           </button>
                         )}
+                        <button onClick={() => deleteConflict(c.id)}
+                          className="text-[11px] px-2 py-1 text-slate-500 hover:text-red-400 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -617,9 +630,15 @@ export default function ConflictsPage() {
                     {c.resolutionNotes && <span>Resolution: {c.resolutionNotes}</span>}
                   </div>
                 </div>
-                <span className="text-emerald-500/60 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/5">
-                  {c.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => deleteConflict(c.id)}
+                    className="text-slate-600 hover:text-red-400 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-emerald-500/60 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/5">
+                    {c.status}
+                  </span>
+                </div>
               </div>
             </div>
           ))}
