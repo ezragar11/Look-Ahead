@@ -7,6 +7,7 @@ import {
   CheckCircle2, Clock, AlertTriangle, ShieldAlert, Upload,
   Calendar, Loader2, HardHat, ArrowRight, FolderOpen, TrendingDown,
   Zap, Layers, Brain, Target, MapPin, Users, Flame, Eye, Megaphone,
+  Activity, ChevronRight, Circle, TriangleAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -77,15 +78,19 @@ interface DashData {
   topAlerts?: AlertSummary[];
 }
 
-const STATUS_DOT: Record<string, string> = {
-  PLANNED: "bg-slate-400", IN_PROGRESS: "bg-amber-400", COMPLETE: "bg-emerald-400",
-  DELAYED: "bg-red-400", BLOCKED: "bg-orange-400", MISSED: "bg-rose-500",
+const STATUS_INDICATOR: Record<string, { dot: string; label: string }> = {
+  PLANNED: { dot: "bg-slate-400", label: "Planned" },
+  IN_PROGRESS: { dot: "bg-amber-400", label: "Active" },
+  COMPLETE: { dot: "bg-emerald-400", label: "Done" },
+  DELAYED: { dot: "bg-red-400", label: "Delayed" },
+  BLOCKED: { dot: "bg-orange-400", label: "Blocked" },
+  MISSED: { dot: "bg-rose-500", label: "Missed" },
 };
 
 /* ── Page ── */
 export default function ProjectDashboardPage() {
   const { companySlug, projectSlug } = useParams<{ companySlug: string; projectSlug: string }>();
-  const [data, setData]       = useState<DashData | null>(null);
+  const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -104,10 +109,7 @@ export default function ProjectDashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <Loader2 className="w-10 h-10 text-sky-500 animate-spin mx-auto mb-3" />
-          <p className="text-slate-500 text-sm">Loading project...</p>
-        </div>
+        <Loader2 className="w-8 h-8 text-slate-500 animate-spin" />
       </div>
     );
   }
@@ -124,147 +126,102 @@ export default function ProjectDashboardPage() {
   const s = data.stats;
   const p = data.project;
   const completionPct = s.total > 0 ? Math.round((s.complete / s.total) * 100) : 0;
-  const today = new Date();
+  const issueCount = s.openConflicts + s.openConstraints + s.overdueCount;
 
-  const WEEK_COLORS = [
-    { accent: "text-sky-300", bg: "from-sky-500/10 to-sky-600/5", border: "border-sky-500/20", bar: "bg-sky-500", label: "This Week" },
-    { accent: "text-violet-300", bg: "from-violet-500/10 to-violet-600/5", border: "border-violet-500/20", bar: "bg-violet-500", label: "Next Week" },
-    { accent: "text-emerald-300", bg: "from-emerald-500/10 to-emerald-600/5", border: "border-emerald-500/20", bar: "bg-emerald-500", label: "Week 3" },
-  ];
+  // Group today's activities by location for area coordination
+  const byLocation: Record<string, ActivityItem[]> = {};
+  data.todayActivities.forEach((a) => {
+    const loc = a.location || "Unassigned Area";
+    if (!byLocation[loc]) byLocation[loc] = [];
+    byLocation[loc].push(a);
+  });
 
   return (
-    <div className="space-y-8">
-      {/* ═══════ Project Header ═══════ */}
-      <div className="flex items-start justify-between gap-4">
+    <div className="space-y-5">
+      {/* ═══ HEADER BAR ═══ */}
+      <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-800/60">
         <div className="min-w-0">
-          <h1 className="text-3xl font-black text-white tracking-tight">{p.projectName}</h1>
-          <div className="flex items-center gap-3 mt-1.5 flex-wrap text-sm">
-            {p.location && <span className="text-slate-400 flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{p.location}</span>}
-            {p.client && <span className="text-slate-500">Client: {p.client}</span>}
-            {p.contractor && <span className="text-slate-500">GC: {p.contractor}</span>}
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-white tracking-tight truncate">{p.projectName}</h1>
+            <span className={cn(
+              "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
+              p.status === "ACTIVE" ? "bg-emerald-500/15 text-emerald-400" :
+              p.status === "ON_HOLD" ? "bg-amber-500/15 text-amber-400" :
+              "bg-slate-500/15 text-slate-400"
+            )}>{p.status}</span>
+          </div>
+          <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
+            {p.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{p.location}</span>}
+            {p.client && <span>Client: {p.client}</span>}
+            {p.contractor && <span>GC: {p.contractor}</span>}
           </div>
         </div>
         <Link href={`${base}/upload`}
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-600 to-violet-600 hover:from-sky-500 hover:to-violet-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-sky-500/20 flex-shrink-0"
+          className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition-colors flex-shrink-0"
         >
-          <Upload className="w-4 h-4" /> Upload Lookahead
+          <Upload className="w-3.5 h-3.5" /> Upload
         </Link>
       </div>
 
-      {/* ═══════ Jobsite Pulse — What a super sees first ═══════ */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
-        <div className="rounded-xl p-4 bg-gradient-to-br from-sky-600 to-sky-700 shadow-lg">
-          <Zap className="w-5 h-5 text-sky-200 mb-1.5" />
-          <p className="text-3xl font-black text-white">{s.todayCount}</p>
-          <p className="text-sky-200 text-[10px] font-bold uppercase tracking-wider">Today&apos;s Work</p>
-        </div>
-        <div className="rounded-xl p-4 bg-gradient-to-br from-violet-600 to-violet-700 shadow-lg">
-          <Calendar className="w-5 h-5 text-violet-200 mb-1.5" />
-          <p className="text-3xl font-black text-white">{s.thisWeekCount}</p>
-          <p className="text-violet-200 text-[10px] font-bold uppercase tracking-wider">This Week</p>
-        </div>
-        <div className="rounded-xl p-4 bg-gradient-to-br from-amber-600 to-amber-700 shadow-lg">
-          <HardHat className="w-5 h-5 text-amber-200 mb-1.5" />
-          <p className="text-3xl font-black text-white">{s.subsOnSite}</p>
-          <p className="text-amber-200 text-[10px] font-bold uppercase tracking-wider">Subs On Site</p>
-        </div>
-        <div className="rounded-xl p-4 bg-gradient-to-br from-emerald-600 to-emerald-700 shadow-lg">
-          <CheckCircle2 className="w-5 h-5 text-emerald-200 mb-1.5" />
-          <p className="text-3xl font-black text-white">{completionPct}%</p>
-          <p className="text-emerald-200 text-[10px] font-bold uppercase tracking-wider">Complete</p>
-        </div>
-        {s.overdueCount > 0 && (
-          <div className="rounded-xl p-4 bg-gradient-to-br from-red-600 to-red-700 shadow-lg">
-            <TrendingDown className="w-5 h-5 text-red-200 mb-1.5" />
-            <p className="text-3xl font-black text-white">{s.overdueCount}</p>
-            <p className="text-red-200 text-[10px] font-bold uppercase tracking-wider">Overdue</p>
-          </div>
-        )}
-        {(s.openConflicts > 0 || s.openConstraints > 0) && (
-          <div className="rounded-xl p-4 bg-gradient-to-br from-orange-600 to-orange-700 shadow-lg">
-            <AlertTriangle className="w-5 h-5 text-orange-200 mb-1.5" />
-            <p className="text-3xl font-black text-white">{s.openConflicts + s.openConstraints}</p>
-            <p className="text-orange-200 text-[10px] font-bold uppercase tracking-wider">Open Issues</p>
-          </div>
-        )}
-        {(s.urgentAlerts ?? 0) > 0 && (
-          <div className="rounded-xl p-4 bg-gradient-to-br from-red-600 to-rose-700 shadow-lg">
-            <Megaphone className="w-5 h-5 text-red-200 mb-1.5" />
-            <p className="text-3xl font-black text-white">{s.urgentAlerts}</p>
-            <p className="text-red-200 text-[10px] font-bold uppercase tracking-wider">Urgent Alerts</p>
-          </div>
-        )}
+      {/* ═══ METRICS ROW ═══ */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+        <MetricCard value={s.todayCount} label="Today" accent="sky" />
+        <MetricCard value={s.thisWeekCount} label="This Week" accent="violet" />
+        <MetricCard value={s.subsOnSite} label="Subs" accent="amber" />
+        <MetricCard value={`${completionPct}%`} label="Complete" accent="emerald" />
+        <MetricCard value={s.overdueCount} label="Overdue" accent={s.overdueCount > 0 ? "red" : "slate"} />
+        <MetricCard value={issueCount} label="Issues" accent={issueCount > 0 ? "orange" : "slate"} />
       </div>
 
-      {/* ═══════ 3-WEEK LOOK-AHEAD — The core of the product ═══════ */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Eye className="w-5 h-5 text-sky-400" /> 3-Week Look-Ahead
+      {/* ═══ 3-WEEK TIMELINE ═══ */}
+      <div className="bg-slate-900/50 rounded-xl border border-slate-800/60 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+            <Eye className="w-4 h-4 text-sky-400" /> 3-Week Look-Ahead
           </h2>
-          <Link href={`${base}/calendar`} className="text-sky-400 hover:text-sky-300 text-xs font-semibold flex items-center gap-1">
-            Open Calendar <ArrowRight className="w-3 h-3" />
+          <Link href={`${base}/calendar`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1">
+            Calendar <ChevronRight className="w-3 h-3" />
           </Link>
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {data.weeks.map((week, wi) => {
-            const wc = WEEK_COLORS[wi];
-            const weekStart = new Date(week.start);
-            const weekEnd = new Date(week.end);
-            const pctDone = week.total > 0 ? Math.round((week.byStatus.complete / week.total) * 100) : 0;
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {data.weeks.map((week, i) => {
+            const ws = new Date(week.start);
+            const we = new Date(week.end);
+            const labels = ["THIS WEEK", "NEXT WEEK", "WEEK 3"];
+            const accents = ["border-sky-500/30", "border-violet-500/30", "border-emerald-500/30"];
+            const textAccents = ["text-sky-400", "text-violet-400", "text-emerald-400"];
 
             return (
-              <div key={wi} className={cn("rounded-2xl border p-5 bg-gradient-to-br", wc.bg, wc.border)}>
-                {/* Week header */}
-                <div className="flex items-center justify-between mb-3">
+              <div key={i} className={cn("rounded-lg border bg-slate-800/30 p-3", accents[i])}>
+                <div className="flex items-center justify-between mb-2">
                   <div>
-                    <p className={cn("text-lg font-bold", wc.accent)}>{wc.label}</p>
-                    <p className="text-slate-500 text-xs">
-                      {weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – {weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    <span className={cn("text-[10px] font-bold uppercase tracking-wider", textAccents[i])}>{labels[i]}</span>
+                    <p className="text-slate-500 text-[10px]">
+                      {ws.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – {we.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-white text-2xl font-black">{week.total}</p>
-                    <p className="text-slate-500 text-[10px] font-bold uppercase">Activities</p>
-                  </div>
+                  <span className="text-white text-lg font-mono font-bold">{week.total}</span>
                 </div>
-
-                {/* Status bars */}
                 {week.total > 0 && (
-                  <div className="flex h-3 rounded-full overflow-hidden bg-slate-700/50 mb-3">
-                    {week.byStatus.complete > 0 && <div className="bg-emerald-500 transition-all" style={{ width: `${(week.byStatus.complete / week.total) * 100}%` }} />}
-                    {week.byStatus.inProgress > 0 && <div className="bg-amber-500 transition-all" style={{ width: `${(week.byStatus.inProgress / week.total) * 100}%` }} />}
-                    {week.byStatus.planned > 0 && <div className="bg-slate-500 transition-all" style={{ width: `${(week.byStatus.planned / week.total) * 100}%` }} />}
-                    {week.byStatus.delayed > 0 && <div className="bg-red-500 transition-all" style={{ width: `${(week.byStatus.delayed / week.total) * 100}%` }} />}
+                  <div className="flex h-1.5 rounded-full overflow-hidden bg-slate-700/50 mb-2">
+                    {week.byStatus.complete > 0 && <div className="bg-emerald-500" style={{ width: `${(week.byStatus.complete / week.total) * 100}%` }} />}
+                    {week.byStatus.inProgress > 0 && <div className="bg-amber-500" style={{ width: `${(week.byStatus.inProgress / week.total) * 100}%` }} />}
+                    {week.byStatus.planned > 0 && <div className="bg-slate-500" style={{ width: `${(week.byStatus.planned / week.total) * 100}%` }} />}
+                    {week.byStatus.delayed > 0 && <div className="bg-red-500" style={{ width: `${(week.byStatus.delayed / week.total) * 100}%` }} />}
                   </div>
                 )}
-
-                {/* Status counts */}
-                <div className="grid grid-cols-4 gap-2 mb-3">
-                  {[
-                    { label: "Done", val: week.byStatus.complete, color: "text-emerald-400" },
-                    { label: "Active", val: week.byStatus.inProgress, color: "text-amber-400" },
-                    { label: "Planned", val: week.byStatus.planned, color: "text-slate-400" },
-                    { label: "Issues", val: week.byStatus.delayed, color: "text-red-400" },
-                  ].map(({ label, val, color }) => (
-                    <div key={label} className="text-center">
-                      <p className={cn("text-sm font-bold", color)}>{val}</p>
-                      <p className="text-slate-600 text-[9px] font-semibold uppercase">{label}</p>
-                    </div>
-                  ))}
+                <div className="flex gap-3 text-[10px]">
+                  <span className="text-emerald-400">{week.byStatus.complete} done</span>
+                  <span className="text-amber-400">{week.byStatus.inProgress} active</span>
+                  <span className="text-slate-400">{week.byStatus.planned} planned</span>
+                  {week.byStatus.delayed > 0 && <span className="text-red-400">{week.byStatus.delayed} issue</span>}
                 </div>
-
-                {/* Subs working this week */}
                 {week.subs.length > 0 && (
-                  <div>
-                    <p className="text-slate-600 text-[10px] font-bold uppercase tracking-wider mb-1">Subs on site</p>
-                    <div className="flex flex-wrap gap-1">
-                      {week.subs.slice(0, 6).map((sub) => (
-                        <span key={sub} className="text-[10px] text-slate-300 bg-slate-700/50 px-2 py-0.5 rounded-full truncate max-w-[120px]">{sub}</span>
-                      ))}
-                      {week.subs.length > 6 && <span className="text-[10px] text-slate-500">+{week.subs.length - 6}</span>}
-                    </div>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {week.subs.slice(0, 4).map((sub) => (
+                      <span key={sub} className="text-[9px] text-slate-400 bg-slate-700/60 px-1.5 py-0.5 rounded truncate max-w-[100px]">{sub}</span>
+                    ))}
+                    {week.subs.length > 4 && <span className="text-[9px] text-slate-600">+{week.subs.length - 4}</span>}
                   </div>
                 )}
               </div>
@@ -273,136 +230,216 @@ export default function ProjectDashboardPage() {
         </div>
       </div>
 
-      {/* ═══════ Two-column: Today's Crew + Overdue ═══════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Today's work */}
-        <div className="bg-slate-800/50 rounded-2xl border border-slate-700/50 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-bold flex items-center gap-2">
-              <Zap className="w-4 h-4 text-sky-400" /> Today&apos;s Work
-            </h3>
-            <Link href={`${base}/daily`} className="text-sky-400 hover:text-sky-300 text-xs font-medium flex items-center gap-1">
-              Daily Log <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-          {data.todayActivities.length === 0 ? (
-            <p className="text-slate-600 text-sm py-4 text-center">No activities scheduled for today.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {data.todayActivities.slice(0, 8).map((a) => (
-                <div key={a.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-700/30 transition-colors">
-                  <span className={cn("w-2 h-2 rounded-full flex-shrink-0", STATUS_DOT[a.status] ?? "bg-slate-400")} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-white text-sm truncate">{a.activityDescription}</p>
-                    <p className="text-slate-500 text-[11px] truncate">{a.responsibleSubcontractorRaw ?? "Unassigned"}{a.location ? ` · ${a.location}` : ""}</p>
+      {/* ═══ MAIN 2-COL: WORK QUEUE + ISSUES ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* LEFT: Work Queue + Area Coordination (3/5 width) */}
+        <div className="lg:col-span-3 space-y-4">
+          {/* Today's Work Queue */}
+          <div className="bg-slate-900/50 rounded-xl border border-slate-800/60">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800/40">
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <Zap className="w-3.5 h-3.5 text-sky-400" /> Work Queue — Today
+              </h3>
+              <Link href={`${base}/daily`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1">
+                Daily Log <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+            <div className="divide-y divide-slate-800/30">
+              {data.todayActivities.length === 0 ? (
+                <p className="text-slate-600 text-xs py-6 text-center">No activities scheduled today</p>
+              ) : (
+                data.todayActivities.slice(0, 10).map((a) => (
+                  <div key={a.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-800/30 transition-colors">
+                    <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", STATUS_INDICATOR[a.status]?.dot ?? "bg-slate-400")} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white text-xs truncate">{a.activityDescription}</p>
+                    </div>
+                    <span className="text-slate-600 text-[10px] truncate max-w-[80px]">{a.responsibleSubcontractorRaw ?? "—"}</span>
+                    {a.location && <span className="text-slate-700 text-[10px] truncate max-w-[60px]">{a.location}</span>}
                   </div>
-                </div>
-              ))}
-              {data.todayActivities.length > 8 && (
-                <p className="text-sky-400 text-xs px-3">+{data.todayActivities.length - 8} more</p>
+                ))
               )}
+              {data.todayActivities.length > 10 && (
+                <div className="px-4 py-2">
+                  <span className="text-sky-500 text-[11px]">+{data.todayActivities.length - 10} more activities</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Area Coordination */}
+          {Object.keys(byLocation).length > 0 && (
+            <div className="bg-slate-900/50 rounded-xl border border-slate-800/60">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800/40">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <MapPin className="w-3.5 h-3.5 text-cyan-400" /> Area Coordination
+                </h3>
+                <Link href={`${base}/locations`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1">
+                  Locations <ChevronRight className="w-3 h-3" />
+                </Link>
+              </div>
+              <div className="divide-y divide-slate-800/30">
+                {Object.entries(byLocation).slice(0, 6).map(([loc, acts]) => (
+                  <div key={loc} className="px-4 py-2.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-slate-300 text-xs font-medium">{loc}</span>
+                      <span className="text-slate-600 text-[10px]">{acts.length} {acts.length === 1 ? "task" : "tasks"}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {[...new Set(acts.map(a => a.responsibleSubcontractorRaw).filter(Boolean))].slice(0, 3).map((sub) => (
+                        <span key={sub} className="text-[9px] text-amber-400/80 bg-amber-500/10 px-1.5 py-0.5 rounded">{sub}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Subs on Site */}
+          {data.subsThisWeek.length > 0 && (
+            <div className="bg-slate-900/50 rounded-xl border border-slate-800/60 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <HardHat className="w-3.5 h-3.5 text-amber-400" /> Subs on Site
+                </h3>
+                <Link href={`${base}/subs`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1">
+                  All <ChevronRight className="w-3 h-3" />
+                </Link>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {data.subsThisWeek.map((sub) => (
+                  <span key={sub} className="px-2 py-1 rounded bg-slate-800 border border-slate-700/50 text-slate-300 text-[11px] font-medium">{sub}</span>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Overdue / attention needed */}
-        <div className="bg-slate-800/50 rounded-2xl border border-slate-700/50 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-bold flex items-center gap-2">
-              <Flame className="w-4 h-4 text-red-400" /> Needs Attention
-            </h3>
-            <Link href={`${base}/delays`} className="text-sky-400 hover:text-sky-300 text-xs font-medium flex items-center gap-1">
-              View All <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-          {data.overdue.length === 0 && s.openConflicts === 0 && s.openConstraints === 0 && (s.openAlerts ?? 0) === 0 ? (
-            <div className="text-center py-4">
-              <CheckCircle2 className="w-8 h-8 text-emerald-500/40 mx-auto mb-2" />
-              <p className="text-emerald-400 text-sm font-medium">All clear — no overdue items.</p>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {/* Urgent/high alerts */}
-              {(data.topAlerts ?? []).map((al) => (
-                <Link key={al.id} href={`${base}/alerts`} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-red-500/5 border border-red-500/10 hover:border-red-500/20 transition-all">
-                  <Megaphone className={cn("w-4 h-4 flex-shrink-0", al.priority === "URGENT" ? "text-red-400" : "text-orange-400")} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-white text-sm truncate">{al.title}</p>
-                    <p className="text-slate-500 text-[11px]">
-                      {al.priority} · {al.projectLocation?.name ?? "No location"}{al.assignedTo ? ` · ${al.assignedTo.name}` : ""}
-                    </p>
-                  </div>
-                  <ArrowRight className="w-3 h-3 text-red-500/40 ml-auto flex-shrink-0" />
+        {/* RIGHT: Issues Panel (2/5 width) */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Alerts */}
+          {(data.topAlerts ?? []).length > 0 && (
+            <div className="bg-slate-900/50 rounded-xl border border-red-500/20">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-red-500/10">
+                <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
+                  <Megaphone className="w-3.5 h-3.5" /> Alerts
+                </h3>
+                <Link href={`${base}/alerts`} className="text-red-400 hover:text-red-300 text-[11px] font-medium flex items-center gap-1">
+                  All <ChevronRight className="w-3 h-3" />
                 </Link>
-              ))}
+              </div>
+              <div className="divide-y divide-slate-800/30">
+                {(data.topAlerts ?? []).map((al) => (
+                  <Link key={al.id} href={`${base}/alerts`} className="flex items-start gap-2.5 px-4 py-2.5 hover:bg-red-500/5 transition-colors">
+                    <TriangleAlert className={cn("w-3.5 h-3.5 mt-0.5 flex-shrink-0", al.priority === "URGENT" ? "text-red-400" : "text-orange-400")} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white text-xs truncate">{al.title}</p>
+                      <p className="text-slate-600 text-[10px]">
+                        {al.priority} {al.projectLocation ? `· ${al.projectLocation.name}` : ""}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Overdue */}
+          {data.overdue.length > 0 && (
+            <div className="bg-slate-900/50 rounded-xl border border-slate-800/60">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800/40">
+                <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
+                  <TrendingDown className="w-3.5 h-3.5" /> Overdue
+                </h3>
+                <Link href={`${base}/delays`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1">
+                  Delays <ChevronRight className="w-3 h-3" />
+                </Link>
+              </div>
+              <div className="divide-y divide-slate-800/30">
+                {data.overdue.slice(0, 6).map((a) => {
+                  const daysLate = a.plannedFinish ? Math.max(0, Math.floor((Date.now() - new Date(a.plannedFinish).getTime()) / 86400000)) : 0;
+                  return (
+                    <div key={a.id} className="flex items-center gap-2.5 px-4 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-white text-xs truncate">{a.activityDescription}</p>
+                        <p className="text-slate-600 text-[10px]">{a.responsibleSubcontractorRaw ?? "Unassigned"}</p>
+                      </div>
+                      <span className="text-red-400 text-[10px] font-mono font-bold flex-shrink-0">+{daysLate}d</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Open Issues Summary */}
+          {(s.openConflicts > 0 || s.openConstraints > 0) && (
+            <div className="bg-slate-900/50 rounded-xl border border-slate-800/60 p-4 space-y-2">
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-orange-400" /> Open Issues
+              </h3>
               {s.openConflicts > 0 && (
-                <Link href={`${base}/conflicts`} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-orange-500/5 border border-orange-500/10 hover:border-orange-500/20 transition-all">
-                  <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0" />
-                  <span className="text-orange-300 text-sm font-medium">{s.openConflicts} open conflict{s.openConflicts > 1 ? "s" : ""}</span>
-                  <ArrowRight className="w-3 h-3 text-orange-500/40 ml-auto" />
+                <Link href={`${base}/conflicts`} className="flex items-center justify-between px-3 py-2 rounded-lg bg-orange-500/5 border border-orange-500/10 hover:border-orange-500/20 transition-colors">
+                  <span className="text-orange-300 text-xs">{s.openConflicts} conflict{s.openConflicts !== 1 ? "s" : ""}</span>
+                  <ChevronRight className="w-3 h-3 text-orange-500/50" />
                 </Link>
               )}
               {s.openConstraints > 0 && (
-                <Link href={`${base}/constraints`} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-yellow-500/5 border border-yellow-500/10 hover:border-yellow-500/20 transition-all">
-                  <ShieldAlert className="w-4 h-4 text-yellow-400 flex-shrink-0" />
-                  <span className="text-yellow-300 text-sm font-medium">{s.openConstraints} open constraint{s.openConstraints > 1 ? "s" : ""}</span>
-                  <ArrowRight className="w-3 h-3 text-yellow-500/40 ml-auto" />
+                <Link href={`${base}/constraints`} className="flex items-center justify-between px-3 py-2 rounded-lg bg-yellow-500/5 border border-yellow-500/10 hover:border-yellow-500/10 transition-colors">
+                  <span className="text-yellow-300 text-xs">{s.openConstraints} constraint{s.openConstraints !== 1 ? "s" : ""}</span>
+                  <ChevronRight className="w-3 h-3 text-yellow-500/50" />
                 </Link>
               )}
-              {data.overdue.map((a) => {
-                const daysLate = a.plannedFinish ? Math.max(0, Math.floor((Date.now() - new Date(a.plannedFinish).getTime()) / 86400000)) : 0;
-                return (
-                  <div key={a.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-red-500/5 border border-red-500/10">
-                    <TrendingDown className="w-4 h-4 text-red-400 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-white text-sm truncate">{a.activityDescription}</p>
-                      <p className="text-slate-500 text-[11px]">{a.responsibleSubcontractorRaw ?? "Unassigned"}</p>
-                    </div>
-                    <span className="text-red-400 text-xs font-bold flex-shrink-0">{daysLate}d late</span>
-                  </div>
-                );
-              })}
             </div>
           )}
+
+          {/* All clear state */}
+          {issueCount === 0 && (data.topAlerts ?? []).length === 0 && (
+            <div className="bg-slate-900/50 rounded-xl border border-emerald-500/20 p-6 text-center">
+              <CheckCircle2 className="w-8 h-8 text-emerald-500/40 mx-auto mb-2" />
+              <p className="text-emerald-400 text-xs font-medium">All clear — no issues</p>
+            </div>
+          )}
+
+          {/* Quick Actions */}
+          <div className="bg-slate-900/50 rounded-xl border border-slate-800/60 p-3">
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { href: `${base}/schedule`, label: "Schedule", icon: Calendar, color: "text-violet-400" },
+                { href: `${base}/lookaheads`, label: "History", icon: Layers, color: "text-cyan-400" },
+                { href: `${base}/analysis`, label: "AI Analysis", icon: Brain, color: "text-fuchsia-400" },
+                { href: `${base}/reports`, label: "Reports", icon: Target, color: "text-emerald-400" },
+              ].map(({ href, label, icon: Icon, color }) => (
+                <Link key={href} href={href}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-slate-700/30 hover:border-slate-600 hover:bg-slate-800/30 transition-all">
+                  <Icon className={cn("w-3.5 h-3.5", color)} />
+                  <span className="text-slate-400 text-[11px] font-medium">{label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* ═══════ Subs On Site This Week ═══════ */}
-      {data.subsThisWeek.length > 0 && (
-        <div className="bg-slate-800/50 rounded-2xl border border-slate-700/50 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-white font-bold flex items-center gap-2">
-              <HardHat className="w-4 h-4 text-amber-400" /> Subcontractors On Site This Week
-            </h3>
-            <Link href={`${base}/subs`} className="text-sky-400 hover:text-sky-300 text-xs font-medium flex items-center gap-1">
-              All Subs <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {data.subsThisWeek.map((sub) => (
-              <span key={sub} className="px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-semibold">{sub}</span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ═══════ Quick Nav ═══════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {[
-          { href: `${base}/schedule`,   label: "Schedule",    icon: Calendar,       from: "from-violet-600/20", iconColor: "text-violet-400" },
-          { href: `${base}/calendar`,   label: "Calendar",    icon: Eye,            from: "from-sky-600/20", iconColor: "text-sky-400" },
-          { href: `${base}/lookaheads`, label: "Lookaheads",  icon: Layers,         from: "from-cyan-600/20", iconColor: "text-cyan-400" },
-          { href: `${base}/subs`,       label: "Subs",        icon: HardHat,        from: "from-amber-600/20", iconColor: "text-amber-400" },
-          { href: `${base}/analysis`,   label: "AI Analysis", icon: Brain,          from: "from-fuchsia-600/20", iconColor: "text-fuchsia-400" },
-          { href: `${base}/reports`,    label: "Reports",     icon: Target,         from: "from-emerald-600/20", iconColor: "text-emerald-400" },
-        ].map(({ href, label, icon: Icon, from, iconColor }) => (
-          <Link key={href} href={href}
-            className={cn("flex flex-col items-center gap-2 px-3 py-5 rounded-xl border border-slate-700/30 hover:border-slate-600 transition-all bg-gradient-to-br to-transparent", from)}>
-            <Icon className={cn("w-6 h-6", iconColor)} />
-            <span className="text-slate-300 text-xs font-semibold">{label}</span>
-          </Link>
-        ))}
-      </div>
+/* ── Metric Card ── */
+function MetricCard({ value, label, accent }: { value: number | string; label: string; accent: string }) {
+  const colors: Record<string, string> = {
+    sky: "border-sky-500/20 text-sky-400",
+    violet: "border-violet-500/20 text-violet-400",
+    amber: "border-amber-500/20 text-amber-400",
+    emerald: "border-emerald-500/20 text-emerald-400",
+    red: "border-red-500/20 text-red-400",
+    orange: "border-orange-500/20 text-orange-400",
+    slate: "border-slate-700/30 text-slate-400",
+  };
+  return (
+    <div className={cn("rounded-lg border bg-slate-900/50 px-3 py-2.5 text-center", colors[accent] ?? colors.slate)}>
+      <p className="text-xl font-mono font-bold text-white">{value}</p>
+      <p className={cn("text-[9px] font-bold uppercase tracking-wider", colors[accent]?.split(" ")[1] ?? "text-slate-500")}>{label}</p>
     </div>
   );
 }
