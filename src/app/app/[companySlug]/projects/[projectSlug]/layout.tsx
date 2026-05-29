@@ -14,6 +14,7 @@ import {
   Megaphone, Coffee, Map, MapPin, Compass,
 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { DemoGuide } from "@/components/DemoGuide";
 
 interface ProjectInfo {
   id: string;
@@ -242,6 +243,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         <div className="max-w-[1600px] mx-auto px-8 py-8">
           <ErrorBoundary>{children}</ErrorBoundary>
         </div>
+        <DemoGuide />
       </main>
     </div>
   );
