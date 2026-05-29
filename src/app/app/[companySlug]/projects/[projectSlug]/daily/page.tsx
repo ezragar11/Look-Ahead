@@ -120,8 +120,15 @@ export default function DailyWorkPlanPage() {
 
   const groups = groupActivities();
 
-  // Open conflicts for this date
-  const dayConflicts = conflicts.filter(c => c.status === "OPEN" || c.status === "UNDER_REVIEW");
+  // Open conflicts relevant to today's active areas
+  const dayConflicts = conflicts.filter(c => {
+    if (c.status !== "OPEN" && c.status !== "UNDER_REVIEW") return false;
+    // If conflict has a location, only show it if crews are in that area today
+    if (c.location && locationsToday.length > 0) {
+      return locationsToday.some(l => l.toLowerCase() === (c.location ?? "").toLowerCase());
+    }
+    return true; // Show location-less conflicts always
+  });
 
   // Inline status update
   async function updateStatus(activityId: string, newStatus: string) {
@@ -147,7 +154,7 @@ export default function DailyWorkPlanPage() {
 
   // Subcontractors on this day
   const subsToday = [...new Set(allDay.map(a => a.responsibleSubcontractorRaw).filter(Boolean))];
-  const locationsToday = [...new Set(allDay.map(a => a.location).filter(Boolean))];
+  const locationsToday = [...new Set(allDay.map(a => a.location).filter((x): x is string => !!x))];
 
   if (loading) {
     return (

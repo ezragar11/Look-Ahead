@@ -18,12 +18,23 @@ interface DetectedConflict {
   conflictType:  string;
   severity:      string;
   location?:     string;
+  locationId?:   string;
   activityIds:   string[];
 }
 
 export async function runConflictDetection(projectId: string): Promise<number> {
   const now = new Date();
   let created = 0;
+
+  // ── Pre-load project locations for FK matching ───────────────────────────
+  const projectLocations = await prisma.projectLocation.findMany({
+    where: { projectId, deletedAt: null },
+    select: { id: true, name: true },
+  });
+  const locationIdMap = new Map<string, string>();
+  for (const loc of projectLocations) {
+    locationIdMap.set(loc.name.trim().toUpperCase(), loc.id);
+  }
 
   // ── Fetch all activities with occurrences ────────────────────────────────
   const activities = await prisma.activity.findMany({
@@ -86,6 +97,7 @@ export async function runConflictDetection(projectId: string): Promise<number> {
           conflictType: "TRADE_OVERLAP",
           severity:    subs.length >= 3 ? "HIGH" : "MEDIUM",
           location:    loc,
+          locationId:  locationIdMap.get(loc) ?? undefined,
           activityIds: ids,
         });
       }
@@ -203,6 +215,8 @@ export async function runConflictDetection(projectId: string): Promise<number> {
         conflictType:  d.conflictType,
         severity:      d.severity,
         status:        "OPEN",
+        location:      d.location ?? null,
+        locationId:    d.locationId ?? null,
         isAutoDetected: true,
         dateIdentified: now,
       },

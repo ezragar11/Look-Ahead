@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
     const conflicts = await prisma.conflict.findMany({
       where,
       include: {
+        projectLocation: { select: { id: true, name: true, zone: true, color: true } },
         conflictActivities: {
           include: {
             activity: {

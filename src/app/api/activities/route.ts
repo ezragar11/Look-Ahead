@@ -95,13 +95,15 @@ export async function PATCH(req: NextRequest) {
       if (field in updates && String(current[field as keyof typeof current]) !== String(updates[field])) {
         await prisma.auditLog.create({
           data: {
+            projectId:   current.projectId,
+            userId:      userId,
             entityType:  "ACTIVITY",
             entityId:    id,
             action:      field === "status" ? "STATUS_CHANGED" : "UPDATED",
             fieldChanged: field,
             oldValue:    String(current[field as keyof typeof current] ?? ""),
             newValue:    String(updates[field] ?? ""),
-            changedBy:   "user",
+            changedBy:   userId,
           },
         });
       }

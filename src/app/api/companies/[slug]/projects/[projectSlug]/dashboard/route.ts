@@ -146,6 +146,23 @@ export async function GET(
       take: 5,
     });
 
+    // Area conflict warnings — open conflicts in locations where work is scheduled today
+    const todayLocationIds = [...new Set(todayActivities.map(a => a.location).filter(Boolean))] as string[];
+    const areaConflicts = await prisma.conflict.findMany({
+      where: {
+        projectId: project.id,
+        deletedAt: null,
+        status: { notIn: ["RESOLVED", "CLOSED"] },
+        OR: [
+          { locationId: { not: null }, location: { in: todayLocationIds.length > 0 ? todayLocationIds : ["__none__"] } },
+          { location: { in: todayLocationIds.length > 0 ? todayLocationIds : ["__none__"] } },
+        ],
+      },
+      include: { projectLocation: { select: { id: true, name: true, color: true } } },
+      orderBy: { severity: "desc" },
+      take: 5,
+    });
+
     // Recent 10 activities for feed
     const recentActivities = allActivities.slice(0, 15);
 
@@ -207,6 +224,7 @@ export async function GET(
       overdue: overdue.slice(0, 10),
       recentActivities,
       topAlerts,
+      areaConflicts,
     });
   } catch (err) {
     console.error("GET .../projects/[projectSlug]/dashboard error:", err);

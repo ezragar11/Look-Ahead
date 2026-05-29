@@ -76,6 +76,16 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Pre-load project locations for auto-matching location text → locationId
+    const projectLocations = await prisma.projectLocation.findMany({
+      where: { projectId: project.id, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    const locationMap = new Map<string, string>();
+    for (const loc of projectLocations) {
+      locationMap.set(loc.name.toLowerCase().trim(), loc.id);
+    }
+
     const subCache = new Map<string, string>();
     let activityCount = 0;
     let occurrenceCount = 0;
@@ -114,6 +124,10 @@ export async function POST(req: NextRequest) {
         if (!primarySubId) primarySubId = subCache.get(key) ?? null;
       }
 
+      // Auto-match location text to a ProjectLocation FK
+      const locText = pa.location?.trim() || null;
+      const matchedLocationId = locText ? locationMap.get(locText.toLowerCase()) ?? null : null;
+
       const activity = await prisma.activity.create({
         data: {
           projectId:                  project.id,
@@ -122,7 +136,8 @@ export async function POST(req: NextRequest) {
           activityDescription:        pa.activityDescription,
           responsibleSubcontractorId: primarySubId,
           responsibleSubcontractorRaw: pa.responsibleSubcontractorRaw,
-          location:                   pa.location || null,
+          location:                   locText,
+          locationId:                 matchedLocationId,
           plannedStart:               pa.plannedStart ?? null,
           plannedFinish:              pa.plannedFinish ?? null,
           actualStart:                pa.actualStart ?? null,
