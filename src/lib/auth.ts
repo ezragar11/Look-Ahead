@@ -2,6 +2,7 @@ import { NextAuthOptions, getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { rateLimit } from "@/lib/rate-limit";
 
 // Role hierarchy (higher = more access)
 export const ROLES = {
@@ -40,6 +41,9 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
+
+        const { allowed } = rateLimit(`login:${credentials.email.toLowerCase()}`, 5, 15 * 60 * 1000);
+        if (!allowed) return null;
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email.toLowerCase().trim() },
