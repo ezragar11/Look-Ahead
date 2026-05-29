@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getSession, writeAuditLog } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +41,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Note text too long (max 5000 chars)" }, { status: 400 });
     }
 
+    const userId = session?.user ? (session.user as { id?: string }).id : undefined;
+
     const note = await prisma.note.create({
       data: {
         activityId: activityId ?? null,
@@ -52,6 +54,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    if (projectId && userId) {
+      await writeAuditLog({
+        projectId, userId, changedBy: userId,
+        entityType: "NOTE", entityId: note.id, action: "CREATED",
+      }).catch(() => {});
+    }
+
     return NextResponse.json(note);
   } catch (err) {
     console.error("POST /api/notes error:", err);
@@ -61,11 +70,23 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const userId = (session.user as { id: string }).id;
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ error: "Note ID required" }, { status: 400 });
 
-    await prisma.note.update({ where: { id }, data: { deletedAt: new Date() } });
+    const note = await prisma.note.update({ where: { id }, data: { deletedAt: new Date() } });
+
+    if (note.projectId) {
+      await writeAuditLog({
+        projectId: note.projectId, userId, changedBy: userId,
+        entityType: "NOTE", entityId: id, action: "DELETED",
+      }).catch(() => {});
+    }
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("DELETE /api/notes error:", err);
