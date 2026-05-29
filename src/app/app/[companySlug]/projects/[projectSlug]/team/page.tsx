@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Users, Loader2, UserPlus, Mail, Clock, Search, X,
   Shield, ChevronDown, Trash2, Check, MoreVertical,
-  Activity, AlertTriangle, UserMinus,
+  Activity, AlertTriangle, UserMinus, Lock, User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -70,11 +70,18 @@ export default function TeamPage() {
 
   // Invite
   const [showInvite, setShowInvite]   = useState(false);
+  const [inviteTab, setInviteTab]     = useState<"search" | "create">("search");
   const [searchQ, setSearchQ]         = useState("");
   const [searchResults, setSearchResults] = useState<UserResult[]>([]);
   const [searching, setSearching]     = useState(false);
   const [inviteRole, setInviteRole]   = useState("ENGINEER");
   const [adding, setAdding]           = useState(false);
+
+  // Create new user
+  const [newName, setNewName]       = useState("");
+  const [newEmail, setNewEmail]     = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newPhone, setNewPhone]     = useState("");
 
   // Edit role
   const [editingRole, setEditingRole]   = useState<string | null>(null);
@@ -133,6 +140,54 @@ export default function TeamPage() {
       } else {
         const err = await res.json();
         toast.error(err.error ?? "Failed");
+      }
+    } catch { toast.error("Failed"); }
+    finally { setAdding(false); }
+  }
+
+  async function createAndAddUser(e: React.FormEvent) {
+    e.preventDefault();
+    if (!projectId || adding) return;
+    setAdding(true);
+    try {
+      // 1. Create user account
+      const uRes = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newName, email: newEmail, password: newPassword,
+          phone: newPhone || undefined,
+        }),
+      });
+      if (!uRes.ok) {
+        const err = await uRes.json();
+        toast.error(err.error ?? "Failed to create user");
+        setAdding(false);
+        return;
+      }
+      const newUser = await uRes.json();
+
+      // 2. Add to company
+      await fetch(`/api/companies/${companySlug}/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: newUser.id, role: inviteRole }),
+      });
+
+      // 3. Add to project
+      const pRes = await fetch("/api/project-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, userId: newUser.id, role: inviteRole }),
+      });
+
+      if (pRes.ok) {
+        toast.success(`Created account for ${newName} and added to project`);
+        setNewName(""); setNewEmail(""); setNewPassword(""); setNewPhone("");
+        setInviteTab("search");
+        load();
+      } else {
+        toast.error("User created but failed to add to project");
       }
     } catch { toast.error("Failed"); }
     finally { setAdding(false); }
@@ -230,73 +285,130 @@ export default function TeamPage() {
             <h3 className="text-white font-bold flex items-center gap-2">
               <UserPlus className="w-4 h-4 text-emerald-400" /> Add Team Member
             </h3>
-            <button onClick={() => { setShowInvite(false); setSearchQ(""); setSearchResults([]); }}
+            <button onClick={() => { setShowInvite(false); setSearchQ(""); setSearchResults([]); setInviteTab("search"); }}
               className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* User search */}
-            <div className="md:col-span-2 relative">
-              <label className="block text-xs text-slate-400 mb-1">Search by name or email</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
-                  placeholder="Type at least 2 characters..."
-                  className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50" />
-                {searching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" />}
-              </div>
-
-              {/* Search results dropdown */}
-              {searchResults.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl shadow-black/50 z-40 max-h-48 overflow-y-auto">
-                  {searchResults.map(u => {
-                    const alreadyAdded = existingUserIds.has(u.id);
-                    return (
-                      <button key={u.id} disabled={alreadyAdded || adding}
-                        onClick={() => addMember(u.id)}
-                        className={cn(
-                          "w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors",
-                          alreadyAdded
-                            ? "opacity-40 cursor-not-allowed"
-                            : "hover:bg-slate-700/50"
-                        )}>
-                        <div className={cn("w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0",
-                          AVATAR_GRADIENTS[u.name.charCodeAt(0) % AVATAR_GRADIENTS.length])}>
-                          <span className="text-white text-xs font-bold">{getInitials(u.name)}</span>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-white text-sm font-medium truncate">{u.name}</p>
-                          <p className="text-slate-500 text-xs truncate">{u.email}</p>
-                        </div>
-                        {alreadyAdded ? (
-                          <span className="text-xs text-slate-500">Already added</span>
-                        ) : (
-                          <UserPlus className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              {searchQ.length >= 2 && !searching && searchResults.length === 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-4 text-center z-40">
-                  <p className="text-slate-500 text-sm">No users found matching &quot;{searchQ}&quot;</p>
-                  <p className="text-slate-600 text-xs mt-1">They need to have an account first.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Role picker */}
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Assign Role</label>
-              <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
-                className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 appearance-none">
-                {PROJECT_ROLES.map(r => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
-            </div>
+          {/* Tabs: Search existing / Create new */}
+          <div className="flex items-center gap-1 bg-slate-900/50 rounded-lg p-1">
+            <button onClick={() => setInviteTab("search")}
+              className={cn("flex-1 px-4 py-2 rounded-lg text-xs font-semibold transition-all",
+                inviteTab === "search" ? "bg-emerald-500/20 text-emerald-300" : "text-slate-500 hover:text-white")}>
+              <Search className="w-3 h-3 inline mr-1.5" />Search Existing User
+            </button>
+            <button onClick={() => setInviteTab("create")}
+              className={cn("flex-1 px-4 py-2 rounded-lg text-xs font-semibold transition-all",
+                inviteTab === "create" ? "bg-violet-500/20 text-violet-300" : "text-slate-500 hover:text-white")}>
+              <UserPlus className="w-3 h-3 inline mr-1.5" />Create New Account
+            </button>
           </div>
+
+          {inviteTab === "search" ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* User search */}
+              <div className="md:col-span-2 relative">
+                <label className="block text-xs text-slate-400 mb-1">Search by name or email</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
+                    placeholder="Type at least 2 characters..."
+                    className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50" />
+                  {searching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 animate-spin" />}
+                </div>
+
+                {/* Search results dropdown */}
+                {searchResults.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl shadow-black/50 z-40 max-h-48 overflow-y-auto">
+                    {searchResults.map(u => {
+                      const alreadyAdded = existingUserIds.has(u.id);
+                      return (
+                        <button key={u.id} disabled={alreadyAdded || adding}
+                          onClick={() => addMember(u.id)}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors",
+                            alreadyAdded ? "opacity-40 cursor-not-allowed" : "hover:bg-slate-700/50"
+                          )}>
+                          <div className={cn("w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0",
+                            AVATAR_GRADIENTS[u.name.charCodeAt(0) % AVATAR_GRADIENTS.length])}>
+                            <span className="text-white text-xs font-bold">{getInitials(u.name)}</span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-white text-sm font-medium truncate">{u.name}</p>
+                            <p className="text-slate-500 text-xs truncate">{u.email}</p>
+                          </div>
+                          {alreadyAdded ? (
+                            <span className="text-xs text-slate-500">Already added</span>
+                          ) : (
+                            <UserPlus className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {searchQ.length >= 2 && !searching && searchResults.length === 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-4 text-center z-40">
+                    <p className="text-slate-500 text-sm">No users found matching &quot;{searchQ}&quot;</p>
+                    <button onClick={() => setInviteTab("create")}
+                      className="text-emerald-400 text-xs mt-2 hover:underline">Create a new account instead</button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Assign Role</label>
+                <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
+                  className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 appearance-none">
+                  {PROJECT_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={createAndAddUser} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Full Name *</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input value={newName} onChange={e => setNewName(e.target.value)} required
+                      placeholder="John Smith"
+                      className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500/50" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Email *</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input value={newEmail} onChange={e => setNewEmail(e.target.value)} required type="email"
+                      placeholder="john@company.com"
+                      className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500/50" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Temp Password *</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input value={newPassword} onChange={e => setNewPassword(e.target.value)} required
+                      minLength={6} placeholder="Min 6 characters"
+                      className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500/50" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Project Role</label>
+                  <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
+                    className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500/50 appearance-none">
+                    {PROJECT_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button type="submit" disabled={adding}
+                  className="px-5 py-2 bg-gradient-to-r from-violet-600 to-sky-600 hover:from-violet-500 hover:to-sky-500 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-all">
+                  {adding ? "Creating..." : "Create Account & Add to Project"}
+                </button>
+                <p className="text-slate-600 text-[10px]">They&apos;ll be added to both the company and this project.</p>
+              </div>
+            </form>
+          )}
         </div>
       )}
 
