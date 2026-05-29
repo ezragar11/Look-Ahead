@@ -2,7 +2,8 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { TableProperties, Loader2, Search, Filter, MapPin, ChevronLeft, ChevronRight, Check, X, RefreshCw } from "lucide-react";
+import { TableProperties, Loader2, Search, Filter, MapPin, ChevronLeft, ChevronRight, Check, X, RefreshCw, Printer, Trash2, Pencil } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
@@ -46,6 +47,9 @@ export default function SchedulePage() {
   const [editingId, setEditingId]   = useState<string | null>(null);
   const [editStatus, setEditStatus] = useState<string>("PLANNED");
   const [projectId, setProjectId]   = useState<string | null>(null);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+
+  const base = `/app/${companySlug}/projects/${projectSlug}`;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,6 +108,39 @@ export default function SchedulePage() {
     }
   }
 
+  async function deleteActivity(id: string) {
+    if (!confirm("Delete this activity?")) return;
+    try {
+      const res = await fetch(`/api/activities/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Activity deleted");
+        setActivities(prev => prev.filter(a => a.id !== id));
+      } else toast.error("Failed to delete");
+    } catch { toast.error("Failed to delete"); }
+  }
+
+  async function saveEdit() {
+    if (!editingActivity) return;
+    try {
+      const res = await fetch(`/api/activities/${editingActivity.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activityDescription: editingActivity.activityDescription,
+          location: editingActivity.location || null,
+          plannedStart: editingActivity.plannedStart || null,
+          plannedFinish: editingActivity.plannedFinish || null,
+          responsibleSubcontractorRaw: editingActivity.responsibleSubcontractorRaw || null,
+        }),
+      });
+      if (res.ok) {
+        toast.success("Activity updated");
+        setActivities(prev => prev.map(a => a.id === editingActivity.id ? { ...a, ...editingActivity } : a));
+        setEditingActivity(null);
+      } else toast.error("Failed to update");
+    } catch { toast.error("Failed to update"); }
+  }
+
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 text-sky-500 animate-spin" /></div>;
 
   return (
@@ -117,9 +154,15 @@ export default function SchedulePage() {
             {hasFilters && <span className="text-sky-400 ml-1">(filtered)</span>}
           </p>
         </div>
-        <button onClick={load} className="p-2 rounded-xl bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white transition-all" title="Refresh">
-          <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-        </button>
+        <div className="flex items-center gap-2">
+          <Link href={`${base}/print`}
+            className="flex items-center gap-2 px-4 py-2 bg-sky-600/20 border border-sky-500/30 text-sky-300 rounded-xl text-sm font-semibold hover:bg-sky-600/30 transition-all">
+            <Printer className="w-4 h-4" /> Print Lookahead
+          </Link>
+          <button onClick={load} className="p-2 rounded-xl bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white transition-all" title="Refresh">
+            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -204,6 +247,7 @@ export default function SchedulePage() {
                   <th className="px-4 py-3.5 text-left font-semibold">Finish</th>
                   <th className="px-4 py-3.5 text-left font-semibold">Status</th>
                   <th className="px-4 py-3.5 text-right font-semibold">Progress</th>
+                  <th className="px-3 py-3.5 text-right font-semibold w-[80px]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50">
@@ -268,6 +312,18 @@ export default function SchedulePage() {
                           <span className="text-slate-400 text-xs w-8 text-right">{a.percentComplete}%</span>
                         </div>
                       </td>
+                      <td className="px-3 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => setEditingActivity({ ...a })} title="Edit"
+                            className="p-1.5 text-slate-500 hover:text-sky-400 transition-colors">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => deleteActivity(a.id)} title="Delete"
+                            className="p-1.5 text-slate-500 hover:text-red-400 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -300,6 +356,61 @@ export default function SchedulePage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+      {/* Edit Activity Modal */}
+      {editingActivity && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm pt-20 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700/50 rounded-2xl w-full max-w-lg shadow-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+              <h2 className="text-white font-semibold">Edit Activity</h2>
+              <button onClick={() => setEditingActivity(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="text-xs text-slate-400 font-medium">Description</label>
+                <input value={editingActivity.activityDescription}
+                  onChange={(e) => setEditingActivity({ ...editingActivity, activityDescription: e.target.value })}
+                  className="mt-1 w-full px-3 py-2.5 bg-slate-800/60 border border-slate-700/50 rounded-lg text-sm text-white focus:outline-none focus:border-sky-500/50" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-slate-400 font-medium">Subcontractor</label>
+                  <input value={editingActivity.responsibleSubcontractorRaw ?? ""}
+                    onChange={(e) => setEditingActivity({ ...editingActivity, responsibleSubcontractorRaw: e.target.value })}
+                    className="mt-1 w-full px-3 py-2.5 bg-slate-800/60 border border-slate-700/50 rounded-lg text-sm text-white focus:outline-none focus:border-sky-500/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 font-medium">Location</label>
+                  <input value={editingActivity.location ?? ""}
+                    onChange={(e) => setEditingActivity({ ...editingActivity, location: e.target.value })}
+                    className="mt-1 w-full px-3 py-2.5 bg-slate-800/60 border border-slate-700/50 rounded-lg text-sm text-white focus:outline-none focus:border-sky-500/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 font-medium">Planned Start</label>
+                  <input type="date" value={editingActivity.plannedStart?.split("T")[0] ?? ""}
+                    onChange={(e) => setEditingActivity({ ...editingActivity, plannedStart: e.target.value || null })}
+                    className="mt-1 w-full px-3 py-2.5 bg-slate-800/60 border border-slate-700/50 rounded-lg text-sm text-white focus:outline-none focus:border-sky-500/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 font-medium">Planned Finish</label>
+                  <input type="date" value={editingActivity.plannedFinish?.split("T")[0] ?? ""}
+                    onChange={(e) => setEditingActivity({ ...editingActivity, plannedFinish: e.target.value || null })}
+                    className="mt-1 w-full px-3 py-2.5 bg-slate-800/60 border border-slate-700/50 rounded-lg text-sm text-white focus:outline-none focus:border-sky-500/50" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={() => setEditingActivity(null)}
+                  className="px-4 py-2 text-slate-400 text-sm hover:text-white transition">Cancel</button>
+                <button onClick={saveEdit}
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-sm font-semibold transition-colors">
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -39,6 +39,45 @@ export async function GET(
   }
 }
 
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const current = await prisma.activity.findUnique({ where: { id: params.id } });
+    if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const userId = (session.user as { id: string }).id;
+    const role = await getProjectRole(userId, current.projectId);
+    if (!canManageWork(role)) {
+      return NextResponse.json({ error: "View-only users cannot delete activities" }, { status: 403 });
+    }
+
+    await prisma.activity.update({
+      where: { id: params.id },
+      data: { deletedAt: new Date() },
+    });
+
+    await writeAuditLog({
+      projectId: current.projectId,
+      userId,
+      changedBy: session.user?.name ?? "Unknown",
+      entityType: "ACTIVITY",
+      entityId: params.id,
+      action: "DELETED",
+      oldValue: current.activityDescription,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("DELETE /api/activities/[id] error:", err);
+    return NextResponse.json({ error: "Failed to delete" }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
