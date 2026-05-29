@@ -4,12 +4,22 @@ import { useParams } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import {
   Loader2, AlertTriangle, CheckCircle2, Clock, MapPin, Plus, X,
-  ChevronDown, Filter, RefreshCw, ShieldAlert, Zap, Search, Archive, Trash2,
+  ChevronDown, RefreshCw, ShieldAlert, Zap, Search, Archive, Trash2,
+  Activity, HardHat, Scan, Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 /* ── Types ── */
+interface LinkedActivity {
+  activity: {
+    id: string;
+    activityDescription: string;
+    location: string | null;
+    subcontractor: { name: string } | null;
+  };
+}
+
 interface Conflict {
   id: string;
   title: string;
@@ -21,9 +31,18 @@ interface Conflict {
   owner: string | null;
   neededBy: string | null;
   resolutionNotes: string | null;
+  isAutoDetected?: boolean;
   createdAt: string;
   resolvedAt: string | null;
   deletedAt?: string | null;
+  conflictActivities?: LinkedActivity[];
+}
+
+interface ActivityOption {
+  id: string;
+  activityDescription: string;
+  location: string | null;
+  responsibleSubcontractorRaw: string | null;
 }
 
 const SEV_CONFIG: Record<string, { bg: string; text: string; border: string; label: string; dot: string }> = {
@@ -43,7 +62,8 @@ const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
 };
 
 const CONFLICT_TYPES = [
-  "TRADE_OVERLAP", "PREDECESSOR", "MATERIAL", "OUTAGE", "INSPECTION",
+  "TRADE_OVERLAP", "CREW_AVAILABILITY", "SEQUENCE_ISSUE", "MATERIAL_DELIVERY",
+  "PREDECESSOR", "MATERIAL", "OUTAGE", "INSPECTION",
   "SAFETY", "ACCESS", "CREW", "EQUIPMENT", "DESIGN", "WEATHER", "PERMIT",
 ];
 
@@ -55,6 +75,7 @@ export default function ConflictsPage() {
   const [loading, setLoading]     = useState(true);
   const [showNew, setShowNew]     = useState(false);
   const [creating, setCreating]   = useState(false);
+  const [detecting, setDetecting] = useState(false);
   const [search, setSearch]       = useState("");
   const [filterSev, setFilterSev] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string | null>(null);
@@ -75,6 +96,12 @@ export default function ConflictsPage() {
   const [newOwner, setNewOwner]   = useState("");
   const [newNeeded, setNewNeeded] = useState("");
 
+  // Activity picker for form
+  const [allActivities, setAllActivities]       = useState<ActivityOption[]>([]);
+  const [activitySearch, setActivitySearch]       = useState("");
+  const [selectedActivityIds, setSelectedActivityIds] = useState<string[]>([]);
+  const [activitiesLoaded, setActivitiesLoaded]   = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -89,6 +116,22 @@ export default function ConflictsPage() {
   }, [companySlug, projectSlug]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load activities when create form opens
+  async function loadActivities() {
+    if (!projectId || activitiesLoaded) return;
+    const res = await fetch(`/api/activities?projectId=${projectId}&limit=500`);
+    if (res.ok) {
+      const data = await res.json();
+      setAllActivities(Array.isArray(data) ? data : data.activities ?? []);
+    }
+    setActivitiesLoaded(true);
+  }
+
+  function openCreateForm() {
+    setShowNew(true);
+    loadActivities();
+  }
 
   // Filter + search
   const openStatuses = ["OPEN", "UNDER_REVIEW", "WAITING_OWNER", "WAITING_SUB"];
@@ -105,7 +148,11 @@ export default function ConflictsPage() {
         c.title.toLowerCase().includes(q) ||
         c.description?.toLowerCase().includes(q) ||
         c.location?.toLowerCase().includes(q) ||
-        c.owner?.toLowerCase().includes(q)
+        c.owner?.toLowerCase().includes(q) ||
+        c.conflictActivities?.some(ca =>
+          ca.activity.activityDescription.toLowerCase().includes(q) ||
+          ca.activity.subcontractor?.name.toLowerCase().includes(q)
+        )
       );
     }
     return result;
@@ -128,18 +175,45 @@ export default function ConflictsPage() {
           severity: newSev, conflictType: newType,
           location: newLoc || null, owner: newOwner || null,
           neededBy: newNeeded || null,
+          activityIds: selectedActivityIds.length > 0 ? selectedActivityIds : undefined,
         }),
       });
       if (res.ok) {
         toast.success("Conflict created");
         setShowNew(false);
         setNewTitle(""); setNewDesc(""); setNewLoc(""); setNewOwner(""); setNewNeeded("");
+        setSelectedActivityIds([]);
         load();
       } else {
         toast.error("Failed to create conflict");
       }
     } catch { toast.error("Failed"); }
     finally { setCreating(false); }
+  }
+
+  // Auto-detect conflicts
+  async function runDetection() {
+    if (!projectId) return;
+    setDetecting(true);
+    try {
+      const res = await fetch("/api/conflicts/detect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.conflictsFound > 0) {
+          toast.success(`Found ${data.conflictsFound} new conflict${data.conflictsFound > 1 ? "s" : ""}`);
+        } else {
+          toast.success("No new conflicts detected");
+        }
+        load();
+      } else {
+        toast.error("Detection failed");
+      }
+    } catch { toast.error("Detection failed"); }
+    finally { setDetecting(false); }
   }
 
   // Update status
@@ -172,9 +246,26 @@ export default function ConflictsPage() {
     if (next && !deletedLoaded) loadDeleted();
   }
 
+  // Activity picker helpers
+  function toggleActivity(id: string) {
+    setSelectedActivityIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  }
+
+  const filteredActivities = activitySearch
+    ? allActivities.filter(a => {
+        const q = activitySearch.toLowerCase();
+        return a.activityDescription.toLowerCase().includes(q) ||
+               a.location?.toLowerCase().includes(q) ||
+               a.responsibleSubcontractorRaw?.toLowerCase().includes(q);
+      })
+    : allActivities.slice(0, 20);
+
   // Stats
   const bySeverity: Record<string, number> = {};
   open.forEach(c => { bySeverity[c.severity] = (bySeverity[c.severity] || 0) + 1; });
+  const autoCount = open.filter(c => c.isAutoDetected).length;
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 text-sky-500 animate-spin" /></div>;
 
@@ -186,13 +277,19 @@ export default function ConflictsPage() {
           <h1 className="text-2xl font-bold text-white">Conflicts</h1>
           <p className="text-slate-500 text-sm mt-1">
             {open.length > 0 ? `${open.length} open, ${resolved.length} resolved` : "No active conflicts"}
+            {autoCount > 0 && <span className="text-violet-400 ml-1">({autoCount} auto-detected)</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={runDetection} disabled={detecting}
+            className="flex items-center gap-2 px-4 py-2 bg-violet-600/20 border border-violet-500/30 hover:bg-violet-600/30 text-violet-300 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
+            {detecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Scan className="w-4 h-4" />}
+            {detecting ? "Scanning..." : "Detect Conflicts"}
+          </button>
           <button onClick={load} className="p-2 rounded-xl bg-slate-800/50 border border-slate-700/50 hover:border-sky-500/30 text-slate-400 hover:text-white transition-all">
             <RefreshCw className="w-4 h-4" />
           </button>
-          <button onClick={() => setShowNew(true)}
+          <button onClick={openCreateForm}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-orange-500/20"
           >
             <Plus className="w-4 h-4" /> Log Conflict
@@ -210,7 +307,7 @@ export default function ConflictsPage() {
             <button key={sev} onClick={() => setFilterSev(active ? null : sev)}
               className={cn(
                 "rounded-xl border p-4 text-center transition-all",
-                active ? cn(cfg.bg, cfg.border, "ring-1 ring-offset-0", `ring-${sev === "CRITICAL" ? "red" : sev === "HIGH" ? "orange" : sev === "MEDIUM" ? "amber" : "sky"}-500/30`)
+                active ? cn(cfg.bg, cfg.border, "ring-1 ring-offset-0 ring-current/30")
                 : "bg-slate-800/50 border-slate-700/50 hover:border-slate-600"
               )}
             >
@@ -227,7 +324,7 @@ export default function ConflictsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search conflicts..."
+            placeholder="Search conflicts, activities, subs..."
             className="w-full pl-9 pr-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50"
           />
         </div>
@@ -257,7 +354,7 @@ export default function ConflictsPage() {
             <h3 className="text-white font-bold flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-orange-400" /> Log New Conflict
             </h3>
-            <button type="button" onClick={() => setShowNew(false)} className="text-slate-500 hover:text-white">
+            <button type="button" onClick={() => { setShowNew(false); setSelectedActivityIds([]); }} className="text-slate-500 hover:text-white">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -309,6 +406,65 @@ export default function ConflictsPage() {
                 className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none" />
             </div>
           </div>
+
+          {/* ── Activity Picker ── */}
+          <div>
+            <label className="block text-xs text-slate-400 mb-1 flex items-center gap-1">
+              <Link2 className="w-3 h-3" /> Link Activities
+              {selectedActivityIds.length > 0 && <span className="text-sky-400 ml-1">({selectedActivityIds.length} selected)</span>}
+            </label>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
+              <input
+                value={activitySearch} onChange={e => setActivitySearch(e.target.value)}
+                placeholder="Search activities by name, location, or sub..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50" />
+            </div>
+
+            {/* Selected pills */}
+            {selectedActivityIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {selectedActivityIds.map(id => {
+                  const act = allActivities.find(a => a.id === id);
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-sky-500/15 border border-sky-500/25 rounded-lg text-[11px] text-sky-300">
+                      {act?.activityDescription.slice(0, 40) ?? id}
+                      <button type="button" onClick={() => toggleActivity(id)} className="hover:text-white"><X className="w-3 h-3" /></button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Activity list */}
+            <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-slate-700/50 bg-slate-900/30 p-2">
+              {!activitiesLoaded && <div className="flex justify-center py-3"><Loader2 className="w-4 h-4 text-slate-600 animate-spin" /></div>}
+              {activitiesLoaded && filteredActivities.length === 0 && (
+                <p className="text-slate-600 text-xs text-center py-2">{activitySearch ? "No matching activities" : "No activities found"}</p>
+              )}
+              {filteredActivities.map(a => {
+                const selected = selectedActivityIds.includes(a.id);
+                return (
+                  <button key={a.id} type="button" onClick={() => toggleActivity(a.id)}
+                    className={cn(
+                      "w-full text-left px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-2",
+                      selected ? "bg-sky-500/15 border border-sky-500/25 text-white" : "hover:bg-slate-800 text-slate-400 hover:text-white border border-transparent"
+                    )}>
+                    <div className={cn("w-4 h-4 rounded border flex items-center justify-center flex-shrink-0",
+                      selected ? "bg-sky-500 border-sky-500" : "border-slate-600")}>
+                      {selected && <CheckCircle2 className="w-3 h-3 text-white" />}
+                    </div>
+                    <span className="flex-1 truncate">{a.activityDescription}</span>
+                    {a.location && <span className="text-slate-600 text-[10px] flex-shrink-0">{a.location}</span>}
+                    {a.responsibleSubcontractorRaw && (
+                      <span className="text-violet-400/60 text-[10px] flex-shrink-0">{a.responsibleSubcontractorRaw}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <button type="submit" disabled={creating}
             className="px-5 py-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-all"
           >
@@ -324,7 +480,7 @@ export default function ConflictsPage() {
             <AlertTriangle className="w-10 h-10 text-orange-500/60" />
           </div>
           <p className="text-white text-lg font-semibold">No Conflicts Logged</p>
-          <p className="text-slate-500 text-sm mt-2">Use the button above to log scheduling conflicts, or run AI analysis to detect them.</p>
+          <p className="text-slate-500 text-sm mt-2">Log conflicts manually, or click <strong>Detect Conflicts</strong> to auto-scan for scheduling overlaps.</p>
         </div>
       )}
 
@@ -339,6 +495,7 @@ export default function ConflictsPage() {
             const isUpdating = updatingStatus[c.id];
             const daysOpen = Math.max(1, Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 86400000));
             const overdue = c.neededBy && new Date(c.neededBy) < new Date();
+            const linked = c.conflictActivities ?? [];
 
             return (
               <div key={c.id} className={cn("rounded-2xl border p-5 transition-all hover:border-slate-600", cfg.bg, cfg.border)}>
@@ -354,6 +511,11 @@ export default function ConflictsPage() {
                         {c.description && <p className="text-slate-400 text-sm mt-1">{c.description}</p>}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
+                        {c.isAutoDetected && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/25 text-violet-300">
+                            Auto
+                          </span>
+                        )}
                         <span className={cn("text-[10px] font-bold px-2.5 py-1 rounded-full border", cfg.bg, cfg.text, cfg.border)}>
                           {cfg.label}
                         </span>
@@ -370,9 +532,7 @@ export default function ConflictsPage() {
                           <MapPin className="w-3 h-3" /> {c.location}
                         </span>
                       )}
-                      {c.owner && (
-                        <span className="text-slate-500">Owner: {c.owner}</span>
-                      )}
+                      {c.owner && <span className="text-slate-500">Owner: {c.owner}</span>}
                       <span className="text-slate-600 flex items-center gap-1">
                         <Clock className="w-3 h-3" /> {daysOpen}d open
                       </span>
@@ -384,6 +544,32 @@ export default function ConflictsPage() {
                         </span>
                       )}
                     </div>
+
+                    {/* ── Linked Activities ── */}
+                    {linked.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-slate-700/20">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                          <Activity className="w-3 h-3" /> Linked Activities ({linked.length})
+                        </p>
+                        <div className="space-y-1">
+                          {linked.map(({ activity: a }) => (
+                            <div key={a.id} className="flex items-center gap-2 text-xs bg-slate-800/40 rounded-lg px-3 py-1.5">
+                              <span className="text-white flex-1 truncate">{a.activityDescription}</span>
+                              {a.location && (
+                                <span className="text-slate-500 flex items-center gap-1 flex-shrink-0">
+                                  <MapPin className="w-2.5 h-2.5" /> {a.location}
+                                </span>
+                              )}
+                              {a.subcontractor && (
+                                <span className="text-violet-400/70 flex items-center gap-1 flex-shrink-0">
+                                  <HardHat className="w-2.5 h-2.5" /> {a.subcontractor.name}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Status + actions */}
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-700/30">
