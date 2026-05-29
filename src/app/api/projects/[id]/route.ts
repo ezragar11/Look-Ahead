@@ -42,6 +42,32 @@ export async function GET(
   }
 }
 
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const userId = (session.user as { id: string }).id;
+    const role = await getProjectRole(userId, params.id);
+    if (!canManageWork(role)) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
+    }
+
+    await prisma.project.update({
+      where: { id: params.id },
+      data: { deletedAt: new Date() },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("DELETE /api/projects/[id] error:", err);
+    return NextResponse.json({ error: "Failed to delete project" }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }

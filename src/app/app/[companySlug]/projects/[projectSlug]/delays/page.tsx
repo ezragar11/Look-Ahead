@@ -125,6 +125,17 @@ export default function DelaysPage() {
     }
   }
 
+  async function deleteDelay(id: string) {
+    if (!confirm("Delete this delay?")) return;
+    const res = await fetch("/api/delays", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) { toast.success("Delay deleted"); load(); }
+    else toast.error("Failed to delete");
+  }
+
   async function loadDeleted() {
     if (!projectId) return;
     const res = await fetch(`/api/delays?projectId=${projectId}&deleted=only`);
@@ -322,6 +333,10 @@ export default function DelaysPage() {
                         Resolve
                       </button>
                     )}
+                    <button onClick={() => deleteDelay(d.id)}
+                      className="px-2 py-1.5 text-[11px] text-slate-500 hover:text-red-400 transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -347,7 +362,13 @@ export default function DelaysPage() {
                     {d.daysDelayed != null && <span className="text-slate-600">{d.daysDelayed}d delayed</span>}
                   </div>
                 </div>
-                <CheckCircle2 className="w-4 h-4 text-emerald-500/50" />
+                <div className="flex items-center gap-2">
+                  <button onClick={() => deleteDelay(d.id)}
+                    className="px-2 py-1.5 text-slate-600 hover:text-red-400 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500/50" />
+                </div>
               </div>
             </div>
           ))}

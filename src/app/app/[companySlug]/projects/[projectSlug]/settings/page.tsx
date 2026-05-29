@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Settings, Loader2, Save, Trash2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,9 +20,11 @@ interface ProjectSettings {
 
 export default function ProjectSettingsPage() {
   const { companySlug, projectSlug } = useParams<{ companySlug: string; projectSlug: string }>();
+  const router = useRouter();
   const [project, setProject] = useState<ProjectSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,6 +55,20 @@ export default function ProjectSettingsPage() {
       else toast.error("Save failed");
     } catch { toast.error("Save failed"); }
     finally { setSaving(false); }
+  }
+
+  async function handleDelete() {
+    if (!project) return;
+    if (!confirm("Are you sure? This will delete the project and all its data.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Project deleted");
+        router.push(`/app/${companySlug}`);
+      } else toast.error("Delete failed");
+    } catch { toast.error("Delete failed"); }
+    finally { setDeleting(false); }
   }
 
   if (loading || !project) return <div className="flex justify-center py-20"><Loader2 className="w-10 h-10 text-sky-500 animate-spin" /></div>;
@@ -125,8 +141,9 @@ export default function ProjectSettingsPage() {
       <div className="bg-red-500/5 rounded-2xl border border-red-500/20 p-6">
         <h2 className="text-red-400 font-semibold text-lg flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Danger Zone</h2>
         <p className="text-slate-500 text-sm mt-2">Deleting this project will permanently remove all lookaheads, activities, documents, and analysis data.</p>
-        <button className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 rounded-xl text-sm font-semibold transition-all">
-          <Trash2 className="w-4 h-4" /> Delete Project
+        <button onClick={handleDelete} disabled={deleting}
+          className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
+          {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete Project
         </button>
       </div>
     </div>
