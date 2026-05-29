@@ -102,17 +102,14 @@ export default function MorningHuddlePage() {
       setProjectName(proj.projectName ?? projectSlug);
       setProjectId(proj.id);
 
-      const [aRes, cRes, cnRes, alRes] = await Promise.all([
-        fetch(`/api/activities?projectId=${proj.id}`),
-        fetch(`/api/conflicts?projectId=${proj.id}`),
-        fetch(`/api/constraints?projectId=${proj.id}`),
-        fetch(`/api/projects/${proj.id}/alerts`),
-      ]);
-
-      if (aRes.ok) setActivities(await aRes.json());
-      if (cRes.ok) setConflicts(await cRes.json());
-      if (cnRes.ok) setConstraints(await cnRes.json());
-      if (alRes.ok) setAlerts(await alRes.json());
+      const bRes = await fetch(`/api/projects/${proj.id}/bundle`);
+      if (bRes.ok) {
+        const data = await bRes.json();
+        setActivities(data.activities ?? []);
+        setConflicts(data.conflicts ?? []);
+        setConstraints(data.constraints ?? []);
+        setAlerts(data.alerts ?? []);
+      }
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, [companySlug, projectSlug]);

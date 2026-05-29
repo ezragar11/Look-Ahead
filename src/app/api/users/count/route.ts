@@ -5,6 +5,12 @@ export const dynamic = "force-dynamic";
 
 // Public endpoint — lets the login page detect bootstrap mode
 export async function GET() {
-  const count = await prisma.user.count();
-  return NextResponse.json({ count });
+  try {
+    const count = await prisma.user.count();
+    return NextResponse.json({ count });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("users/count error:", message);
+    return NextResponse.json({ error: "DB error", detail: message }, { status: 500 });
+  }
 }

@@ -52,22 +52,12 @@ function LoginForm() {
     if (res?.error) {
       setError("Invalid email or password.");
     } else {
-      // If callbackUrl is just "/" or the old root, redirect to user's company instead
-      if (!callbackUrl || callbackUrl === "/") {
-        try {
-          const cRes = await fetch("/api/companies");
-          if (cRes.ok) {
-            const companies = await cRes.json();
-            if (companies.length > 0) {
-              router.push(`/app/${companies[0].slug}`);
-              router.refresh();
-              return;
-            }
-          }
-        } catch { /* fall through */ }
+      if (callbackUrl && callbackUrl !== "/") {
+        window.location.href = callbackUrl;
+        return;
       }
-      router.push(callbackUrl || "/");
-      router.refresh();
+      // Hard redirect — let server-side middleware route to the right place
+      window.location.href = "/";
     }
   }
 

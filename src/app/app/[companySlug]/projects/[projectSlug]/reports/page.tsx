@@ -99,18 +99,15 @@ export default function ProjectReportsPage() {
       const pRes = await fetch(`/api/companies/${companySlug}/projects/${projectSlug}`);
       if (!pRes.ok) { setLoading(false); return; }
       const proj = await pRes.json();
-      const [aRes, cRes, alRes, nRes, conRes] = await Promise.all([
-        fetch(`/api/activities?projectId=${proj.id}`),
-        fetch(`/api/conflicts?projectId=${proj.id}`),
-        fetch(`/api/projects/${proj.id}/alerts`),
-        fetch(`/api/notes?projectId=${proj.id}`),
-        fetch(`/api/constraints?projectId=${proj.id}`),
-      ]);
-      if (aRes.ok) setActivities(await aRes.json());
-      if (cRes.ok) setConflicts(await cRes.json());
-      if (alRes.ok) setAlerts(await alRes.json());
-      if (nRes.ok) setNotes(await nRes.json());
-      if (conRes.ok) setConstraints(await conRes.json());
+      const bRes = await fetch(`/api/projects/${proj.id}/bundle`);
+      if (bRes.ok) {
+        const data = await bRes.json();
+        setActivities(data.activities ?? []);
+        setConflicts(data.conflicts ?? []);
+        setAlerts(data.alerts ?? []);
+        setNotes(data.notes ?? []);
+        setConstraints(data.constraints ?? []);
+      }
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, [companySlug, projectSlug]);

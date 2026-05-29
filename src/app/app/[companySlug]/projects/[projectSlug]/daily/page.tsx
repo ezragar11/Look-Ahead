@@ -75,12 +75,12 @@ export default function DailyWorkPlanPage() {
       if (!pRes.ok) { setLoading(false); return; }
       const proj = await pRes.json();
       setProjectId(proj.id);
-      const [aRes, cRes] = await Promise.all([
-        fetch(`/api/activities?projectId=${proj.id}`),
-        fetch(`/api/conflicts?projectId=${proj.id}`),
-      ]);
-      if (aRes.ok) setActivities(await aRes.json());
-      if (cRes.ok) setConflicts(await cRes.json());
+      const bRes = await fetch(`/api/projects/${proj.id}/bundle`);
+      if (bRes.ok) {
+        const data = await bRes.json();
+        setActivities(data.activities ?? []);
+        setConflicts(data.conflicts ?? []);
+      }
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, [companySlug, projectSlug]);

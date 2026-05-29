@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const userCount = await prisma.user.count();
     if (userCount > 0) {
       return NextResponse.json(
-        { error: "Registration is closed. Contact your admin to be invited." },
+        { error: "Registration is closed. Contact your admin to be invited.", userCount },
         { status: 403 }
       );
     }
