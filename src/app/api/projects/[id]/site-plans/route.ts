@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getProjectRole, canManageWork } from "@/lib/access";
+import { uploadFile } from "@/lib/storage";
 import path from "path";
-import fs from "fs/promises";
 
 export const dynamic = "force-dynamic";
 
@@ -68,15 +68,12 @@ export async function POST(
 
     const normalizedDisc = DISCIPLINES.includes(discipline) ? discipline : "OTHER";
 
-    // Store under uploads/projects/{id}/site-plans/
-    const uploadRoot = path.resolve(process.cwd(), "uploads", "projects", params.id, "site-plans");
-    await fs.mkdir(uploadRoot, { recursive: true });
-
+    // Store in durable object storage under projects/{id}/site-plans/
     const ext        = path.extname(file.name) || "";
     const storedName = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
-    const filePath   = path.join(uploadRoot, storedName);
+    const objectKey  = `projects/${params.id}/site-plans/${storedName}`;
     const arrayBuf   = await file.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(arrayBuf));
+    await uploadFile(objectKey, Buffer.from(arrayBuf), file.type);
 
     const doc = await prisma.projectDocument.create({
       data: {
@@ -85,7 +82,7 @@ export async function POST(
         type:         `SITE_PLAN_${normalizedDisc}`,
         originalName: file.name,
         storedName,
-        filePath,
+        filePath:     objectKey,
         mimeType:     file.type,
         fileSize:     file.size,
         hasImages:    file.type.startsWith("image/"),

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { downloadFile } from "@/lib/storage";
 import path from "path";
-import fs from "fs/promises";
 
 export const dynamic = "force-dynamic";
 
@@ -23,32 +23,23 @@ export async function GET(
     const session = await getSession();
     if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
 
-    // Reconstruct the path and ensure it stays within uploads/
-    const relativePath = params.filePath.join("/");
+    // Reconstruct the storage object key from the path segments
+    const objectKey = params.filePath.join("/");
 
     // Security: block path traversal
-    if (relativePath.includes("..") || relativePath.startsWith("/")) {
+    if (objectKey.includes("..") || objectKey.startsWith("/")) {
       return new NextResponse("Forbidden", { status: 403 });
     }
 
-    const fullPath = path.resolve(process.cwd(), "uploads", relativePath);
-
-    // Extra guard: must be under uploads dir
-    const uploadsRoot = path.resolve(process.cwd(), "uploads");
-    if (!fullPath.startsWith(uploadsRoot)) {
-      return new NextResponse("Forbidden", { status: 403 });
-    }
-
-    const stat = await fs.stat(fullPath).catch(() => null);
-    if (!stat || !stat.isFile()) {
+    const data = await downloadFile(objectKey);
+    if (!data) {
       return new NextResponse("Not found", { status: 404 });
     }
 
-    const ext  = path.extname(fullPath).toLowerCase();
+    const ext  = path.extname(objectKey).toLowerCase();
     const mime = MIME_MAP[ext] ?? "application/octet-stream";
-    const data = await fs.readFile(fullPath);
 
-    return new NextResponse(data, {
+    return new NextResponse(new Uint8Array(data), {
       status: 200,
       headers: {
         "Content-Type": mime,

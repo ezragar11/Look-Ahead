@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getProjectRole, canUploadDocuments, canManageWork } from "@/lib/access";
+import { uploadFile } from "@/lib/storage";
 import path from "path";
-import fs   from "fs/promises";
 
 export const dynamic = "force-dynamic";
 
@@ -18,12 +18,11 @@ const ALLOWED_MIME = new Set([
 
 const DOC_TYPES = ["SCOPE_OF_WORK", "BLUEPRINT", "SPECIFICATION", "SUBMITTAL", "CONTRACT", "RFI_LOG", "SCHEDULE", "OTHER"];
 
-async function extractPdfText(filePath: string): Promise<{ text: string; pages: number }> {
+async function extractPdfText(buf: Buffer): Promise<{ text: string; pages: number }> {
   try {
     // Dynamic import so the server bundle isn't broken if pdf-parse has issues
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pdfParse = require("pdf-parse");
-    const buf  = await fs.readFile(filePath);
     const data = await pdfParse(buf);
     return { text: data.text ?? "", pages: data.numpages ?? 0 };
   } catch {
@@ -82,25 +81,22 @@ export async function POST(
 
     const normalizedType = DOC_TYPES.includes(docType) ? docType : "OTHER";
 
-    // Ensure upload directory exists
-    const uploadRoot = path.resolve(process.cwd(), "uploads", "projects", params.id, "documents");
-    await fs.mkdir(uploadRoot, { recursive: true });
-
-    // Write file to disk
+    // Read into memory, store in durable object storage under projects/{id}/documents/
     const ext        = path.extname(file.name) || "";
     const storedName = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
-    const filePath   = path.join(uploadRoot, storedName);
-    const arrayBuf   = await file.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(arrayBuf));
+    const objectKey  = `projects/${params.id}/documents/${storedName}`;
+    const buffer     = Buffer.from(await file.arrayBuffer());
 
-    // Extract text for PDFs
+    // Extract text for PDFs (from the in-memory buffer)
     let extractedText: string | undefined;
     let pageCount: number | undefined;
     if (file.type === "application/pdf") {
-      const result = await extractPdfText(filePath);
+      const result = await extractPdfText(buffer);
       extractedText = result.text.trim() || undefined;
       pageCount     = result.pages || undefined;
     }
+
+    await uploadFile(objectKey, buffer, file.type);
 
     const doc = await prisma.projectDocument.create({
       data: {
@@ -109,7 +105,7 @@ export async function POST(
         type:          normalizedType,
         originalName:  file.name,
         storedName,
-        filePath,
+        filePath:      objectKey,
         mimeType:      file.type,
         fileSize:      file.size,
         pageCount,
