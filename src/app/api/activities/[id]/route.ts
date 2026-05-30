@@ -127,18 +127,42 @@ export async function PATCH(
       });
     }
 
+    // Whitelist editable fields — never spread raw client input into the DB
+    // (prevents reassigning projectId/lookaheadId or writing system fields).
+    const data: Record<string, unknown> = {};
+    if (typeof updates.category === "string")                    data.category = updates.category;
+    if (typeof updates.activityDescription === "string")         data.activityDescription = updates.activityDescription;
+    if ("responsibleSubcontractorId" in updates)                 data.responsibleSubcontractorId = updates.responsibleSubcontractorId || null;
+    if (typeof updates.responsibleSubcontractorRaw === "string") data.responsibleSubcontractorRaw = updates.responsibleSubcontractorRaw;
+    if ("location" in updates)                                   data.location = updates.location || null;
+    if ("locationId" in updates)                                 data.locationId = updates.locationId || null;
+    if ("plannedStart" in updates)                               data.plannedStart = updates.plannedStart ? new Date(updates.plannedStart) : null;
+    if ("plannedFinish" in updates)                              data.plannedFinish = updates.plannedFinish ? new Date(updates.plannedFinish) : null;
+    if ("actualStart" in updates)                                data.actualStart = updates.actualStart ? new Date(updates.actualStart) : null;
+    if ("actualFinish" in updates)                               data.actualFinish = updates.actualFinish ? new Date(updates.actualFinish) : null;
+    if (typeof updates.status === "string")                      data.status = updates.status;
+    if (typeof updates.percentComplete === "number")             data.percentComplete = updates.percentComplete;
+    if ("delayReason" in updates)                                data.delayReason = updates.delayReason || null;
+    if (typeof updates.priority === "string")                    data.priority = updates.priority;
+    if (typeof updates.needsFollowUp === "boolean")              data.needsFollowUp = updates.needsFollowUp;
+    if (typeof updates.inspectionRequired === "boolean")         data.inspectionRequired = updates.inspectionRequired;
+    if (typeof updates.outageRequired === "boolean")             data.outageRequired = updates.outageRequired;
+    if (typeof updates.materialRequired === "boolean")           data.materialRequired = updates.materialRequired;
+    if (typeof updates.safetyConcern === "boolean")              data.safetyConcern = updates.safetyConcern;
+    if ("notes" in updates)                                      data.notes = updates.notes || null;
+
     // ── Auto-flag risk indicators ──
-    const merged = { ...current, ...updates };
+    const merged = { ...current, ...data };
 
     // Started late: actual start is after planned start
     if (merged.actualStart && merged.plannedStart) {
       const actual = new Date(merged.actualStart).getTime();
       const planned = new Date(merged.plannedStart).getTime();
-      if (actual > planned && !updates.delayReason) {
+      if (actual > planned && !data.delayReason) {
         const daysLate = Math.ceil((actual - planned) / 86400000);
-        updates.needsFollowUp = true;
+        data.needsFollowUp = true;
         if (!merged.delayReason) {
-          updates.delayReason = `Started ${daysLate} day${daysLate > 1 ? "s" : ""} late`;
+          data.delayReason = `Started ${daysLate} day${daysLate > 1 ? "s" : ""} late`;
         }
       }
     }
@@ -150,22 +174,22 @@ export async function PATCH(
       merged.plannedFinish &&
       new Date(merged.plannedFinish).getTime() < Date.now()
     ) {
-      updates.needsFollowUp = true;
+      data.needsFollowUp = true;
     }
 
     // Status changed to DELAYED/BLOCKED/MISSED → auto-flag
     if (["DELAYED", "BLOCKED", "MISSED"].includes(merged.status)) {
-      updates.needsFollowUp = true;
+      data.needsFollowUp = true;
     }
 
     // Completed → clear follow-up flag
     if (merged.status === "COMPLETE" && merged.actualFinish) {
-      updates.needsFollowUp = false;
+      data.needsFollowUp = false;
     }
 
     const updated = await prisma.activity.update({
       where: { id: params.id },
-      data:  updates,
+      data,
       include: {
         subcontractor: true,
         occurrences:   { orderBy: { plannedDate: "asc" } },

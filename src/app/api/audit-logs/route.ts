@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { canAccessProject } from "@/lib/access";
 import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,11 @@ export async function GET(req: NextRequest) {
     const search     = req.nextUrl.searchParams.get("search");
 
     if (!projectId) return NextResponse.json({ error: "projectId required" }, { status: 400 });
+
+    const callerId = (session.user as { id: string }).id;
+    if (!(await canAccessProject(callerId, projectId))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const where: Prisma.AuditLogWhereInput = { projectId };
     if (entityType) where.entityType = entityType;

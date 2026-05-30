@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { getProjectRole, canManageWork } from "@/lib/access";
+import { getProjectRole, canManageWork, canAccessProject } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +13,11 @@ export async function GET(
   try {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const userId = (session.user as { id: string }).id;
+    if (!(await canAccessProject(userId, params.id))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const deleted = req.nextUrl.searchParams.get("deleted");
     const deletedFilter = deleted === "only" ? { not: null } : null;
@@ -110,12 +115,23 @@ export async function PATCH(
       return NextResponse.json({ error: "View-only users cannot edit locations" }, { status: 403 });
     }
 
-    const { id, ...updates } = await req.json();
+    const body = await req.json();
+    const { id } = body;
     if (!id) return NextResponse.json({ error: "Location ID required" }, { status: 400 });
+
+    // Whitelist editable fields — never let the client move a location to another
+    // project or overwrite system fields by spreading raw input.
+    const data: Record<string, unknown> = {};
+    if (typeof body.name === "string")        data.name = body.name.trim();
+    if (typeof body.zone === "string")        data.zone = body.zone.trim() || null;
+    if (typeof body.floor === "string")       data.floor = body.floor.trim() || null;
+    if (typeof body.description === "string") data.description = body.description.trim() || null;
+    if (typeof body.color === "string")       data.color = body.color || null;
+    if (typeof body.sortOrder === "number")   data.sortOrder = body.sortOrder;
 
     const location = await prisma.projectLocation.update({
       where: { id, projectId: params.id },
-      data: updates,
+      data,
     });
 
     return NextResponse.json(location);

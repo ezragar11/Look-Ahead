@@ -22,6 +22,39 @@ const ALERT_MANAGERS = ["PROJECT_ADMIN", "PROJECT_MANAGER", "SUPERINTENDENT", "E
 // View-only roles (cannot edit project data beyond notes/documents/alerts)
 const VIEW_ONLY_ROLES = ["SUBCONTRACTOR", "OWNER_VIEWER"];
 
+// ── Global / company role helpers ─────────────────────────────────────────────
+
+/** PLATFORM_ADMIN is the only globalRole that grants cross-company superuser access. */
+export function isPlatformAdmin(globalRole: string | null | undefined): boolean {
+  return globalRole === "PLATFORM_ADMIN";
+}
+
+/** Company roles allowed to manage company membership (add users, change roles, suspend). */
+const COMPANY_USER_MANAGERS = ["COMPANY_ADMIN", "OPERATIONS_MANAGER"];
+
+/** Resolve a user's company role (PLATFORM_ADMIN counts as COMPANY_ADMIN). Null = no access. */
+export async function getCompanyRole(
+  userId: string,
+  companyId: string
+): Promise<string | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { globalRole: true },
+  });
+  if (user?.globalRole === "PLATFORM_ADMIN") return "COMPANY_ADMIN";
+
+  const cu = await prisma.companyUser.findUnique({
+    where: { companyId_userId: { companyId, userId } },
+  });
+  if (cu && cu.status === "ACTIVE") return cu.role;
+  return null;
+}
+
+/** Can manage company membership (add/remove users, change company roles). */
+export function canManageCompanyUsers(companyRole: string | null): boolean {
+  return !!companyRole && COMPANY_USER_MANAGERS.includes(companyRole);
+}
+
 // ── Get user's project role ─────────────────────────────────────────────────
 
 export async function getProjectRole(

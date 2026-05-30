@@ -157,7 +157,7 @@ export default function ProjectDashboardPage() {
           </div>
         </div>
         <Link href={`${base}/upload`}
-          className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition-colors flex-shrink-0"
+          className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition-colors flex-shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
         >
           <Upload className="w-3.5 h-3.5" /> Upload
         </Link>
@@ -179,7 +179,7 @@ export default function ProjectDashboardPage() {
           <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
             <Eye className="w-4 h-4 text-sky-400" /> 3-Week Look-Ahead
           </h2>
-          <Link href={`${base}/calendar`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1">
+          <Link href={`${base}/calendar`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1 cursor-pointer rounded focus-visible:outline-none focus-visible:underline">
             Calendar <ChevronRight className="w-3 h-3" />
           </Link>
         </div>
@@ -240,7 +240,7 @@ export default function ProjectDashboardPage() {
               <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                 <Zap className="w-3.5 h-3.5 text-sky-400" /> Work Queue — Today
               </h3>
-              <Link href={`${base}/daily`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1">
+              <Link href={`${base}/daily`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1 cursor-pointer rounded focus-visible:outline-none focus-visible:underline">
                 Daily Log <ChevronRight className="w-3 h-3" />
               </Link>
             </div>
@@ -274,7 +274,7 @@ export default function ProjectDashboardPage() {
                 <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                   <MapPin className="w-3.5 h-3.5 text-cyan-400" /> Area Coordination
                 </h3>
-                <Link href={`${base}/locations`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1">
+                <Link href={`${base}/locations`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1 cursor-pointer rounded focus-visible:outline-none focus-visible:underline">
                   Locations <ChevronRight className="w-3 h-3" />
                 </Link>
               </div>
@@ -303,7 +303,7 @@ export default function ProjectDashboardPage() {
                 <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                   <HardHat className="w-3.5 h-3.5 text-amber-400" /> Subs on Site
                 </h3>
-                <Link href={`${base}/subs`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1">
+                <Link href={`${base}/subs`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1 cursor-pointer rounded focus-visible:outline-none focus-visible:underline">
                   All <ChevronRight className="w-3 h-3" />
                 </Link>
               </div>
@@ -325,13 +325,13 @@ export default function ProjectDashboardPage() {
                 <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
                   <Megaphone className="w-3.5 h-3.5" /> Alerts
                 </h3>
-                <Link href={`${base}/alerts`} className="text-red-400 hover:text-red-300 text-[11px] font-medium flex items-center gap-1">
+                <Link href={`${base}/alerts`} className="text-red-400 hover:text-red-300 text-[11px] font-medium flex items-center gap-1 cursor-pointer rounded focus-visible:outline-none focus-visible:underline">
                   All <ChevronRight className="w-3 h-3" />
                 </Link>
               </div>
               <div className="divide-y divide-slate-800/30">
                 {(data.topAlerts ?? []).map((al) => (
-                  <Link key={al.id} href={`${base}/alerts`} className="flex items-start gap-2.5 px-4 py-2.5 hover:bg-red-500/5 transition-colors">
+                  <Link key={al.id} href={`${base}/alerts`} className="flex items-start gap-2.5 px-4 py-2.5 hover:bg-red-500/5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-red-400/50">
                     <TriangleAlert className={cn("w-3.5 h-3.5 mt-0.5 flex-shrink-0", al.priority === "URGENT" ? "text-red-400" : "text-orange-400")} />
                     <div className="min-w-0 flex-1">
                       <p className="text-white text-xs truncate">{al.title}</p>
@@ -352,7 +352,7 @@ export default function ProjectDashboardPage() {
                 <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
                   <TrendingDown className="w-3.5 h-3.5" /> Overdue
                 </h3>
-                <Link href={`${base}/delays`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1">
+                <Link href={`${base}/delays`} className="text-sky-400 hover:text-sky-300 text-[11px] font-medium flex items-center gap-1 cursor-pointer rounded focus-visible:outline-none focus-visible:underline">
                   Delays <ChevronRight className="w-3 h-3" />
                 </Link>
               </div>
@@ -380,13 +380,13 @@ export default function ProjectDashboardPage() {
                 <AlertTriangle className="w-3.5 h-3.5 text-orange-400" /> Open Issues
               </h3>
               {s.openConflicts > 0 && (
-                <Link href={`${base}/conflicts`} className="flex items-center justify-between px-3 py-2 rounded-lg bg-orange-500/5 border border-orange-500/10 hover:border-orange-500/20 transition-colors">
+                <Link href={`${base}/conflicts`} className="flex items-center justify-between px-3 py-2 rounded-lg bg-orange-500/5 border border-orange-500/10 hover:border-orange-500/20 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/50">
                   <span className="text-orange-300 text-xs">{s.openConflicts} conflict{s.openConflicts !== 1 ? "s" : ""}</span>
                   <ChevronRight className="w-3 h-3 text-orange-500/50" />
                 </Link>
               )}
               {s.openConstraints > 0 && (
-                <Link href={`${base}/constraints`} className="flex items-center justify-between px-3 py-2 rounded-lg bg-yellow-500/5 border border-yellow-500/10 hover:border-yellow-500/10 transition-colors">
+                <Link href={`${base}/constraints`} className="flex items-center justify-between px-3 py-2 rounded-lg bg-yellow-500/5 border border-yellow-500/10 hover:border-yellow-500/20 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400/50">
                   <span className="text-yellow-300 text-xs">{s.openConstraints} constraint{s.openConstraints !== 1 ? "s" : ""}</span>
                   <ChevronRight className="w-3 h-3 text-yellow-500/50" />
                 </Link>
@@ -412,7 +412,7 @@ export default function ProjectDashboardPage() {
                 { href: `${base}/reports`, label: "Reports", icon: Target, color: "text-emerald-400" },
               ].map(({ href, label, icon: Icon, color }) => (
                 <Link key={href} href={href}
-                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-slate-700/30 hover:border-slate-600 hover:bg-slate-800/30 transition-all">
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-slate-700/30 hover:border-slate-600 hover:bg-slate-800/30 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">
                   <Icon className={cn("w-3.5 h-3.5", color)} />
                   <span className="text-slate-400 text-[11px] font-medium">{label}</span>
                 </Link>

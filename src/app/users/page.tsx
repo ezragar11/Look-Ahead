@@ -6,9 +6,6 @@ import {
   XCircle, Clock, Eye, EyeOff,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { ROLE_LABELS } from "@/lib/auth";
-import { ROLE_CAPABILITIES } from "@/lib/permissions";
-import type { UserRole } from "@/lib/auth";
 
 interface User {
   id:         string;
@@ -28,12 +25,31 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
   INVITED:   { label: "Invited",   color: "text-yellow-700 bg-yellow-50 border-yellow-200", icon: <Clock className="w-3.5 h-3.5" /> },
 };
 
-const ROLES: UserRole[] = [
-  "ADMIN","PROJECT_MANAGER","SUPERINTENDENT","ENGINEER","INTERN","SUBCONTRACTOR","OWNER_CLIENT",
-];
+// globalRole is platform-level only. Company- and project-level roles are managed
+// per company at /app/[companySlug]/users. The two valid global roles:
+const GLOBAL_ROLES = ["PLATFORM_ADMIN", "USER"] as const;
+type GlobalRole = (typeof GLOBAL_ROLES)[number];
+
+const GLOBAL_ROLE_LABELS: Record<GlobalRole, string> = {
+  PLATFORM_ADMIN: "Platform Admin",
+  USER:           "User",
+};
+
+const GLOBAL_ROLE_CAPABILITIES: Record<GlobalRole, string[]> = {
+  PLATFORM_ADMIN: [
+    "Full cross-company superuser access",
+    "Manage all users, companies & projects",
+    "Treated as Company Admin / Project Admin everywhere",
+  ],
+  USER: [
+    "No platform-wide access by default",
+    "Access is granted per company & per project",
+    "Company/project role determines capabilities",
+  ],
+};
 
 const emptyForm = {
-  name: "", email: "", password: "", globalRole: "ENGINEER" as UserRole, company: "",
+  name: "", email: "", password: "", globalRole: "USER" as GlobalRole, company: "",
 };
 
 export default function UsersPage() {
@@ -43,7 +59,7 @@ export default function UsersPage() {
   const [form, setForm]         = useState(emptyForm);
   const [saving, setSaving]     = useState(false);
   const [showPw, setShowPw]     = useState(false);
-  const [hoverRole, setHoverRole] = useState<UserRole | null>(null);
+  const [hoverRole, setHoverRole] = useState<GlobalRole | null>(null);
 
   useEffect(() => { fetchUsers(); }, []);
 
@@ -123,23 +139,23 @@ export default function UsersPage() {
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
         <div className="flex items-center gap-2 mb-3">
           <Shield className="w-4 h-4 text-gray-400" />
-          <p className="text-sm font-semibold text-gray-700">Role Permissions — hover a role to see capabilities</p>
+          <p className="text-sm font-semibold text-gray-700">Global Roles — hover a role to see capabilities</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {ROLES.map((role) => (
+          {GLOBAL_ROLES.map((role) => (
             <div key={role} className="relative">
               <span
                 onMouseEnter={() => setHoverRole(role)}
                 onMouseLeave={() => setHoverRole(null)}
                 className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 cursor-default"
               >
-                {ROLE_LABELS[role]}
+                {GLOBAL_ROLE_LABELS[role]}
               </span>
               {hoverRole === role && (
                 <div className="absolute bottom-full left-0 mb-2 w-52 bg-slate-800 text-white rounded-lg shadow-xl p-3 z-50 text-xs">
-                  <p className="font-semibold mb-1.5">{ROLE_LABELS[role]}</p>
+                  <p className="font-semibold mb-1.5">{GLOBAL_ROLE_LABELS[role]}</p>
                   <ul className="space-y-0.5 text-slate-300">
-                    {ROLE_CAPABILITIES[role].map((cap) => (
+                    {GLOBAL_ROLE_CAPABILITIES[role].map((cap) => (
                       <li key={cap} className="flex gap-1">
                         <span className="text-blue-400 flex-shrink-0">·</span>
                         {cap}
@@ -151,6 +167,10 @@ export default function UsersPage() {
             </div>
           ))}
         </div>
+        <p className="text-xs text-gray-400 mt-3">
+          Company & project roles (Project Manager, Superintendent, Engineer, Subcontractor, etc.)
+          are assigned per company under each company&apos;s Users page.
+        </p>
       </div>
 
       {/* Add user form */}
@@ -174,9 +194,9 @@ export default function UsersPage() {
                 {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            <select value={form.globalRole} onChange={(e) => setForm((f) => ({ ...f, globalRole: e.target.value as UserRole }))}
+            <select value={form.globalRole} onChange={(e) => setForm((f) => ({ ...f, globalRole: e.target.value as GlobalRole }))}
               className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-              {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+              {GLOBAL_ROLES.map((r) => <option key={r} value={r}>{GLOBAL_ROLE_LABELS[r]}</option>)}
             </select>
             <input type="text" value={form.company} onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
               placeholder="Company (optional)"
@@ -229,7 +249,7 @@ export default function UsersPage() {
                         onChange={(e) => changeRole(user, e.target.value)}
                         className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                       >
-                        {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                        {GLOBAL_ROLES.map((r) => <option key={r} value={r}>{GLOBAL_ROLE_LABELS[r]}</option>)}
                       </select>
                     </td>
                     <td className="py-3 px-4">

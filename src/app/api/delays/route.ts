@@ -56,10 +56,20 @@ export async function POST(req: NextRequest) {
 
     const delay = await prisma.delay.create({
       data: {
-        ...body,
-        createdBy: session?.user?.name ?? "Unknown",
-        startDate: body.startDate ? new Date(body.startDate) : null,
-        endDate:   body.endDate   ? new Date(body.endDate)   : null,
+        projectId:        body.projectId,
+        activityId:       body.activityId ?? null,
+        subcontractorId:  body.subcontractorId ?? null,
+        title:            body.title,
+        delayType:        body.delayType ?? undefined,
+        daysDelayed:      typeof body.daysDelayed === "number" ? body.daysDelayed : null,
+        cause:            body.cause ?? null,
+        responsibleParty: body.responsibleParty ?? null,
+        impact:           body.impact ?? null,
+        status:           body.status ?? undefined,
+        notes:            body.notes ?? null,
+        createdBy:        session?.user?.name ?? "Unknown",
+        startDate:        body.startDate ? new Date(body.startDate) : null,
+        endDate:          body.endDate   ? new Date(body.endDate)   : null,
       },
     });
 
@@ -87,7 +97,8 @@ export async function PATCH(req: NextRequest) {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { id, ...updates } = await req.json();
+    const body = await req.json();
+    const { id } = body;
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
     const existing = await prisma.delay.findUnique({ where: { id } });
@@ -99,15 +110,26 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "View-only users cannot edit delays" }, { status: 403 });
     }
 
-    if (updates.startDate) updates.startDate = new Date(updates.startDate);
-    if (updates.endDate)   updates.endDate   = new Date(updates.endDate);
+    const data: Record<string, unknown> = {};
+    if (typeof body.title === "string")            data.title = body.title;
+    if (typeof body.delayType === "string")        data.delayType = body.delayType;
+    if (typeof body.cause === "string")            data.cause = body.cause;
+    if (typeof body.responsibleParty === "string") data.responsibleParty = body.responsibleParty;
+    if (typeof body.impact === "string")           data.impact = body.impact;
+    if (typeof body.status === "string")           data.status = body.status;
+    if (typeof body.notes === "string")            data.notes = body.notes;
+    if (typeof body.daysDelayed === "number")      data.daysDelayed = body.daysDelayed;
+    if ("activityId" in body)                      data.activityId = body.activityId || null;
+    if ("subcontractorId" in body)                 data.subcontractorId = body.subcontractorId || null;
+    if (body.startDate !== undefined)              data.startDate = body.startDate ? new Date(body.startDate) : null;
+    if (body.endDate !== undefined)                data.endDate = body.endDate ? new Date(body.endDate) : null;
 
     const delay = await prisma.delay.update({
       where: { id },
-      data:  updates,
+      data,
     });
 
-    if (session?.user && updates.status) {
+    if (session?.user && data.status) {
       await writeAuditLog({
         projectId:   delay.projectId,
         userId:      (session.user as { id: string }).id,
@@ -116,7 +138,7 @@ export async function PATCH(req: NextRequest) {
         entityId:    delay.id,
         action:      "STATUS_CHANGED",
         fieldChanged: "status",
-        newValue:    updates.status,
+        newValue:    data.status as string,
       });
     }
 

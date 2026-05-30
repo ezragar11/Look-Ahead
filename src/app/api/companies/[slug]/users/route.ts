@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { getCompanyRole, canManageCompanyUsers } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,12 @@ export async function POST(
 
     const company = await prisma.company.findUnique({ where: { slug: params.slug } });
     if (!company) return NextResponse.json({ error: "Company not found" }, { status: 404 });
+
+    const callerId = (session.user as { id: string }).id;
+    const callerRole = await getCompanyRole(callerId, company.id);
+    if (!canManageCompanyUsers(callerRole)) {
+      return NextResponse.json({ error: "Only company admins can add users" }, { status: 403 });
+    }
 
     const { userId, email, role } = await req.json();
 
@@ -115,8 +122,23 @@ export async function PATCH(
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const company = await prisma.company.findUnique({ where: { slug: params.slug } });
+    if (!company) return NextResponse.json({ error: "Company not found" }, { status: 404 });
+
+    const callerId = (session.user as { id: string }).id;
+    const callerRole = await getCompanyRole(callerId, company.id);
+    if (!canManageCompanyUsers(callerRole)) {
+      return NextResponse.json({ error: "Only company admins can change membership" }, { status: 403 });
+    }
+
     const { id, role, status } = await req.json();
     if (!id) return NextResponse.json({ error: "CompanyUser id required" }, { status: 400 });
+
+    // Ensure the target membership belongs to this company (prevent cross-company edits).
+    const target = await prisma.companyUser.findUnique({ where: { id }, select: { companyId: true } });
+    if (!target || target.companyId !== company.id) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     const data: Record<string, unknown> = {};
     if (role) data.role = role;

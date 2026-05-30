@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { canAccessProject } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,15 @@ export async function GET(req: NextRequest) {
     const userId     = searchParams.get("userId");
     const limit      = parseInt(searchParams.get("limit") ?? "100");
     const offset     = parseInt(searchParams.get("offset") ?? "0");
+
+    // Audit logs are project-scoped: require a project and verify access,
+    // otherwise this would dump every project's logs to any signed-in user.
+    if (!projectId) return NextResponse.json({ error: "projectId required" }, { status: 400 });
+
+    const callerId = (session.user as { id: string }).id;
+    if (!(await canAccessProject(callerId, projectId))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const where: Record<string, unknown> = {};
     if (projectId)  where.projectId  = projectId;

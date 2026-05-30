@@ -59,7 +59,8 @@ export async function PATCH(req: NextRequest) {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { id, ...updates } = await req.json();
+    const body = await req.json();
+    const { id } = body;
     if (!id) return NextResponse.json({ error: "Conflict ID required" }, { status: 400 });
 
     const conflict = await prisma.conflict.findUnique({ where: { id } });
@@ -71,9 +72,22 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "View-only users cannot edit conflicts" }, { status: 403 });
     }
 
+    const data: Record<string, unknown> = {};
+    if (typeof body.title === "string")           data.title = body.title;
+    if (typeof body.description === "string")      data.description = body.description;
+    if (typeof body.conflictType === "string")     data.conflictType = body.conflictType;
+    if (typeof body.severity === "string")         data.severity = body.severity;
+    if (typeof body.status === "string")           data.status = body.status;
+    if (typeof body.owner === "string")            data.owner = body.owner;
+    if (typeof body.location === "string")         data.location = body.location;
+    if ("locationId" in body)                      data.locationId = body.locationId || null;
+    if (typeof body.resolutionNotes === "string")  data.resolutionNotes = body.resolutionNotes;
+    if (body.neededBy !== undefined)               data.neededBy = body.neededBy ? new Date(body.neededBy) : null;
+    if (data.status === "RESOLVED" && !body.resolvedAt) data.resolvedAt = new Date();
+
     const updated = await prisma.conflict.update({
       where: { id },
-      data:  updates,
+      data,
     });
 
     return NextResponse.json(updated);
@@ -89,17 +103,31 @@ export async function POST(req: NextRequest) {
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-    const { activityIds, ...conflictData } = body;
+    const { activityIds } = body;
 
-    if (conflictData.projectId) {
+    if (body.projectId) {
       const userId = (session.user as { id: string }).id;
-      const role = await getProjectRole(userId, conflictData.projectId);
+      const role = await getProjectRole(userId, body.projectId);
       if (!canManageWork(role)) {
         return NextResponse.json({ error: "View-only users cannot create conflicts" }, { status: 403 });
       }
     }
 
-    const conflict = await prisma.conflict.create({ data: conflictData });
+    const conflict = await prisma.conflict.create({
+      data: {
+        projectId:       body.projectId,
+        title:           body.title,
+        description:     body.description ?? null,
+        conflictType:    body.conflictType ?? undefined,
+        severity:        body.severity ?? undefined,
+        status:          body.status ?? undefined,
+        owner:           body.owner ?? null,
+        location:        body.location ?? null,
+        locationId:      body.locationId ?? null,
+        neededBy:        body.neededBy ? new Date(body.neededBy) : null,
+        isAutoDetected:  body.isAutoDetected === true,
+      },
+    });
 
     if (activityIds?.length) {
       for (const activityId of activityIds) {

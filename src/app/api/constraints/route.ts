@@ -57,9 +57,16 @@ export async function POST(req: NextRequest) {
 
     const constraint = await prisma.constraint.create({
       data: {
-        ...body,
-        createdBy: session?.user?.name ?? "Unknown",
-        neededBy:  body.neededBy ? new Date(body.neededBy) : null,
+        projectId:        body.projectId,
+        activityId:       body.activityId ?? null,
+        title:            body.title,
+        type:             body.type ?? undefined,
+        status:           body.status ?? undefined,
+        priority:         body.priority ?? undefined,
+        responsibleParty: body.responsibleParty ?? null,
+        notes:            body.notes ?? null,
+        createdBy:        session?.user?.name ?? "Unknown",
+        neededBy:         body.neededBy ? new Date(body.neededBy) : null,
       },
     });
 
@@ -87,7 +94,8 @@ export async function PATCH(req: NextRequest) {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { id, ...updates } = await req.json();
+    const body = await req.json();
+    const { id } = body;
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
     const existing = await prisma.constraint.findUnique({ where: { id } });
@@ -99,17 +107,23 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "View-only users cannot edit constraints" }, { status: 403 });
     }
 
-    if (updates.status === "RESOLVED" && !updates.resolvedAt) {
-      updates.resolvedAt = new Date();
-    }
-    if (updates.neededBy) updates.neededBy = new Date(updates.neededBy);
+    const data: Record<string, unknown> = {};
+    if (typeof body.title === "string")            data.title = body.title;
+    if (typeof body.type === "string")             data.type = body.type;
+    if (typeof body.status === "string")           data.status = body.status;
+    if (typeof body.priority === "string")         data.priority = body.priority;
+    if (typeof body.responsibleParty === "string") data.responsibleParty = body.responsibleParty;
+    if (typeof body.notes === "string")            data.notes = body.notes;
+    if ("activityId" in body)                      data.activityId = body.activityId || null;
+    if (body.neededBy !== undefined)               data.neededBy = body.neededBy ? new Date(body.neededBy) : null;
+    if (data.status === "RESOLVED" && !body.resolvedAt) data.resolvedAt = new Date();
 
     const constraint = await prisma.constraint.update({
       where: { id },
-      data:  updates,
+      data,
     });
 
-    if (session?.user && updates.status) {
+    if (session?.user && data.status) {
       await writeAuditLog({
         projectId:   constraint.projectId,
         userId:      (session.user as { id: string }).id,
@@ -118,7 +132,7 @@ export async function PATCH(req: NextRequest) {
         entityId:    constraint.id,
         action:      "STATUS_CHANGED",
         fieldChanged: "status",
-        newValue:    updates.status,
+        newValue:    data.status as string,
       });
     }
 

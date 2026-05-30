@@ -57,7 +57,7 @@ export async function GET(
         id: true, activityDescription: true, status: true,
         plannedStart: true, plannedFinish: true,
         category: true, percentComplete: true,
-        responsibleSubcontractorRaw: true, location: true,
+        responsibleSubcontractorRaw: true, location: true, locationId: true,
         priority: true, needsFollowUp: true,
       },
       orderBy: { plannedStart: "asc" },
@@ -146,17 +146,21 @@ export async function GET(
       take: 5,
     });
 
-    // Area conflict warnings — open conflicts in locations where work is scheduled today
-    const todayLocationIds = [...new Set(todayActivities.map(a => a.location).filter(Boolean))] as string[];
-    const areaConflicts = await prisma.conflict.findMany({
+    // Area conflict warnings — open conflicts in areas where work is scheduled today.
+    // Match on the structured ProjectLocation FK first (canonical), with the free-text
+    // location string as a fallback for activities/conflicts that predate the link.
+    const todayLocationIds   = [...new Set(todayActivities.map(a => a.locationId).filter(Boolean))] as string[];
+    const todayLocationNames = [...new Set(todayActivities.map(a => a.location).filter(Boolean))] as string[];
+    const areaWhereOr: Array<Record<string, unknown>> = [];
+    if (todayLocationIds.length > 0)   areaWhereOr.push({ locationId: { in: todayLocationIds } });
+    if (todayLocationNames.length > 0) areaWhereOr.push({ location: { in: todayLocationNames } });
+
+    const areaConflicts = areaWhereOr.length === 0 ? [] : await prisma.conflict.findMany({
       where: {
         projectId: project.id,
         deletedAt: null,
         status: { notIn: ["RESOLVED", "CLOSED"] },
-        OR: [
-          { locationId: { not: null }, location: { in: todayLocationIds.length > 0 ? todayLocationIds : ["__none__"] } },
-          { location: { in: todayLocationIds.length > 0 ? todayLocationIds : ["__none__"] } },
-        ],
+        OR: areaWhereOr,
       },
       include: { projectLocation: { select: { id: true, name: true, color: true } } },
       orderBy: { severity: "desc" },
